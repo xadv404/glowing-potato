@@ -9,6 +9,92 @@ import requests
 AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
 CHARS = list("abcdefghijklmnopqrstuvwxyz0123456789")
 DEFAULT_DELAY = 0.2
+MIN_WORDS = 1
+MAX_WORDS = 3
+MAX_PER_PREFIX = 5
+MAX_PER_SEED = 40
+
+
+def is_valid_keyword(keyword: str, seed: str = "", direct: set[str] | None = None) -> bool:
+    words = keyword.split()
+    direct = direct or set()
+
+    if not (MIN_WORDS <= len(words) <= MAX_WORDS):
+        return False
+
+    if any(char.isdigit() for char in keyword):
+        return False
+
+    if len(words) != len(set(words)):
+        return False
+
+    if len(words[-1]) <= 2 and keyword not in direct:
+        return False
+
+    if seed:
+        seed_words = set(seed.split())
+        if not seed_words.intersection(words):
+            return False
+
+    return True
+
+
+def prefix_key(keyword: str) -> str:
+    words = keyword.split()
+    if len(words) == 1:
+        return words[0]
+    return " ".join(words[:2])
+
+
+def dedupe_repetitive(
+    keywords: set[str],
+    direct: set[str] | None = None,
+    max_per_prefix: int = MAX_PER_PREFIX,
+) -> set[str]:
+    direct = direct or set()
+    buckets: dict[str, int] = {}
+    kept: set[str] = set()
+
+    def rank(keyword: str) -> tuple:
+        return (
+            0 if keyword in direct else 1,
+            len(keyword.split()),
+            len(keyword),
+            keyword,
+        )
+
+    for keyword in sorted(keywords, key=rank):
+        key = prefix_key(keyword)
+        if buckets.get(key, 0) >= max_per_prefix:
+            continue
+        buckets[key] = buckets.get(key, 0) + 1
+        kept.add(keyword)
+
+    return kept
+
+
+def filter_keywords(
+    raw_keywords: set[str],
+    seed: str = "",
+    direct: set[str] | None = None,
+    max_per_seed: int = MAX_PER_SEED,
+) -> set[str]:
+    valid = {kw for kw in raw_keywords if is_valid_keyword(kw, seed=seed, direct=direct)}
+    deduped = dedupe_repetitive(valid, direct=direct)
+
+    if len(deduped) <= max_per_seed:
+        return deduped
+
+    def rank(keyword: str) -> tuple:
+        return (
+            0 if direct and keyword in direct else 1,
+            len(keyword.split()),
+            len(keyword),
+            keyword,
+        )
+
+    ranked = sorted(deduped, key=rank)
+    return set(ranked[:max_per_seed])
 
 
 def load_keywords(path: Path) -> list[str]:
@@ -48,21 +134,24 @@ def fetch_suggestions(query: str, lang: str = "fr") -> list[str]:
     return [suggestion.lower() for suggestion in data[1] if isinstance(suggestion, str)]
 
 
-def expand_keyword(keyword: str, lang: str, delay: float) -> set[str]:
-    results = set()
+def expand_keyword(keyword: str, lang: str, delay: float) -> tuple[set[str], set[str]]:
+    results: set[str] = set()
+    direct: set[str] = set()
     queries = [keyword] + [f"{keyword} {char}" for char in CHARS]
 
     for query in queries:
         try:
             suggestions = fetch_suggestions(query, lang)
             results.update(suggestions)
+            if query == keyword:
+                direct.update(suggestions)
             print(f"  {query!r} -> +{len(suggestions)} ({len(results)} total)")
         except Exception as exc:
             print(f"  {query!r} -> erreur: {exc}", file=sys.stderr)
 
         time.sleep(delay)
 
-    return results
+    return results, direct
 
 
 def scrape_keywords(
@@ -70,13 +159,28 @@ def scrape_keywords(
     lang: str = "fr",
     delay: float = DEFAULT_DELAY,
 ) -> set[str]:
-    all_keywords = set()
+    all_keywords: set[str] = set()
+    total_raw = 0
+    total_filtered = 0
 
     for index, keyword in enumerate(input_keywords, start=1):
         print(f"[{index}/{len(input_keywords)}] {keyword}")
-        expanded = expand_keyword(keyword, lang, delay)
-        all_keywords.update(expanded)
-        print(f"  => {len(expanded)} suggestions, {len(all_keywords)} uniques au total\n")
+        expanded, direct = expand_keyword(keyword, lang, delay)
+        total_raw += len(expanded)
+
+        cleaned = filter_keywords(expanded, seed=keyword, direct=direct)
+        total_filtered += len(cleaned)
+        all_keywords.update(cleaned)
+
+        print(
+            f"  => {len(expanded)} brutes -> {len(cleaned)} retenues "
+            f"({len(all_keywords)} uniques au total)\n"
+        )
+
+    print(
+        f"Filtrage : {total_raw} brutes -> {total_filtered} retenues "
+        f"({len(all_keywords)} uniques, 1-{MAX_WORDS} mots, max {MAX_PER_PREFIX}/préfixe)\n"
+    )
 
     return all_keywords
 
