@@ -3,172 +3,207 @@ import argparse
 import sys
 from itertools import product
 from pathlib import Path
+from urllib.parse import quote_plus
 
-DORK_TYPES = ("generic", "sqli", "all")
+DORK_TYPES = ("google", "sqli", "generic", "all")
+GOOGLE_SEARCH_URL = "https://www.google.com/search?q="
 
-FILE_TYPES = ["pdf", "doc", "docx", "xls", "xlsx", "csv", "sql", "txt", "xml", "json", "env", "log", "bak", "conf", "cfg"]
+FILE_TYPES = ["pdf", "doc", "xls", "csv", "sql", "txt", "xml", "json", "env", "log", "bak", "conf"]
 
 INURL_PATTERNS = [
     "admin", "login", "dashboard", "backup", "config", "upload", "api",
-    "debug", "console", "phpmyadmin", "wp-admin", "wp-content",
-    "database", "db", "secret", "password", "token", "key",
+    "debug", "phpmyadmin", "wp-admin", "database", "password", "token",
 ]
 
 INTITLE_PATTERNS = [
-    "index of", "login", "admin", "dashboard", "password",
-    "confidential", "backup", "database", "error",
+    "index of", "login", "admin", "dashboard", "password", "backup", "database",
 ]
 
-BASIC_TEMPLATES = [
-    'intitle:"{keyword}"',
+# --- Pure Google dorks (sans keyword) ---
+
+PURE_GOOGLE_DORKS = [
+    'inurl:admin intitle:login',
+    'inurl:login.php',
+    'inurl:admin.php',
+    'inurl:admin/login',
+    'inurl:administrator',
+    'inurl:wp-admin',
+    'inurl:wp-login.php',
+    'inurl:phpmyadmin',
+    'intitle:"index of"',
+    'intitle:"index of" "parent directory"',
+    'intitle:"index of" filetype:sql',
+    'intitle:"index of" filetype:env',
+    'intitle:"index of" filetype:log',
+    'intitle:"index of" filetype:bak',
+    'intitle:"index of" filetype:cfg',
+    'filetype:sql "insert into"',
+    'filetype:sql "dump"',
+    'filetype:sql "backup"',
+    'filetype:env "DB_PASSWORD"',
+    'filetype:env "MYSQL"',
+    'filetype:env "API_KEY"',
+    'filetype:log intext:password',
+    'filetype:pdf intext:confidential',
+    'filetype:xls intext:password',
+    'filetype:csv intext:email',
+    'ext:sql intext:password',
+    'ext:env intext:secret',
+    'ext:bak intext:backup',
+    'ext:old intext:password',
+    'inurl:backup filetype:sql',
+    'inurl:config filetype:env',
+    'inurl:.git/config',
+    'inurl:.env',
+    'inurl:api intext:token',
+    'inurl:api intext:secret',
+    'intext:"password" filetype:txt',
+    'intext:"username" intext:"password" filetype:txt',
+    'intitle:login intext:password',
+    'inurl:ftp intext:login',
+    'inurl:shell intext:cmd',
+]
+
+PURE_SQLI_DORKS = [
+    "inurl:id=",
+    "inurl:pid=",
+    "inurl:cat=",
+    "inurl:category=",
+    "inurl:page=",
+    "inurl:sid=",
+    "inurl:uid=",
+    "inurl:product_id=",
+    "inurl:item_id=",
+    "inurl:news_id=",
+    "inurl:article_id=",
+    "inurl:view=",
+    "inurl:dir=",
+    "inurl:file=",
+    "inurl:action=",
+    "inurl:cmd=",
+    "inurl:query=",
+    "inurl:search=",
+    "inurl:type=",
+    "inurl:module=",
+    "inurl:index.php?id=",
+    "inurl:product.php?id=",
+    "inurl:article.php?id=",
+    "inurl:news.php?id=",
+    "inurl:page.php?id=",
+    "inurl:view.php?id=",
+    "inurl:category.php?id=",
+    "inurl:show.php?id=",
+    "inurl:detail.php?id=",
+    "inurl:gallery.php?id=",
+    "inurl:download.php?id=",
+    "inurl:profile.php?id=",
+    "inurl:shop.php?id=",
+    "inurl:games.php?id=",
+    "inurl:sql.php?id=",
+    "inurl:main.php?id=",
+    "inurl:buy.php?category=",
+    "inurl:trainers.php?id=",
+    "inurl:page.php?file=",
+    "inurl:newsitem.php?num=",
+    "inurl:top10.php?cat=",
+    "allinurl:index.php?id=",
+    "allinurl:product.php?id=",
+    "allinurl:article.php?id=",
+    'inurl:id= intext:"You have an error in your SQL syntax"',
+    'inurl:id= intext:"mysql_fetch_array()"',
+    'inurl:id= intext:"mysql_fetch_assoc()"',
+    'inurl:id= intext:"mysql_num_rows()"',
+    'inurl:id= intext:"Warning: mysql_query()"',
+    'inurl:id= intext:"mysqli_fetch_array()"',
+    'inurl:cat= intext:"You have an error in your SQL syntax"',
+    'inurl:page= intext:"You have an error in your SQL syntax"',
+    'intext:"You have an error in your SQL syntax"',
+    'intext:"mysql_fetch_array()"',
+    'intext:"mysql_fetch_assoc()"',
+    'intext:"Unclosed quotation mark"',
+    'intext:"SQL syntax"',
+    'intext:"PostgreSQL query failed"',
+    'intext:"ORA-01756"',
+    'intext:"Microsoft OLE DB Provider for SQL Server"',
+    'intext:"Error Executing Database Query"',
+    'filetype:php inurl:id=',
+    'filetype:php inurl:cat=',
+    'filetype:php inurl:page=',
+    'filetype:php inurl:index.php?id=',
+    'filetype:php inurl:product.php?id=',
+    'filetype:php intext:"mysql_fetch_array()"',
+    'filetype:php intext:"You have an error in your SQL syntax"',
+    'inurl:.php?id=',
+    'inurl:.php?cat=',
+    'inurl:.php?page=',
+    'inurl:.php?pid=',
+    'inurl:.php?uid=',
+]
+
+SITE_DORK_TEMPLATES = [
+    "site:{domain} inurl:admin",
+    "site:{domain} inurl:login",
+    "site:{domain} inurl:backup",
+    "site:{domain} inurl:config",
+    "site:{domain} inurl:id=",
+    "site:{domain} inurl:index.php?id=",
+    "site:{domain} inurl:product.php?id=",
+    'site:{domain} intitle:"index of"',
+    "site:{domain} filetype:sql",
+    "site:{domain} filetype:env",
+    "site:{domain} filetype:pdf",
+    'site:{domain} intext:"password"',
+    'site:{domain} intext:"You have an error in your SQL syntax"',
+    'site:{domain} inurl:id= intext:"mysql_fetch_array()"',
+]
+
+KEYWORD_DORK_TEMPLATES = [
     "inurl:{keyword}",
-    "intext:{keyword}",
-    'allintext:"{keyword}"',
-    '"{keyword}"',
-    "intitle:{keyword} inurl:{keyword}",
+    "intitle:{qkeyword}",
+    "intext:{qkeyword}",
+    'allintext:{qkeyword}',
+    "{qkeyword}",
+    'filetype:pdf {qkeyword}',
+    'filetype:sql {qkeyword}',
+    'filetype:env {qkeyword}',
+    'inurl:admin {qkeyword}',
+    'inurl:login {qkeyword}',
+    'inurl:backup {qkeyword}',
+    'intitle:"index of" {qkeyword}',
+    'inurl:id= {qkeyword}',
+    'inurl:cat= {qkeyword}',
+    'inurl:index.php?id= {qkeyword}',
+    'inurl:product.php?id= {qkeyword}',
+    'filetype:php inurl:id= {qkeyword}',
+    'inurl:id= intext:"mysql_fetch_array()" {qkeyword}',
+    'inurl:id= intext:"You have an error in your SQL syntax" {qkeyword}',
 ]
 
-FILETYPE_TEMPLATES = [
-    'filetype:{ext} "{keyword}"',
-    'filetype:{ext} intext:{keyword}',
-    'filetype:{ext} intitle:{keyword}',
-]
-
-INURL_TEMPLATES = [
-    'inurl:{pattern} intext:{keyword}',
-    'inurl:{pattern} "{keyword}"',
-    'inurl:{pattern} intitle:{keyword}',
-]
-
-INTITLE_TEMPLATES = [
-    'intitle:"{pattern}" intext:{keyword}',
-    'intitle:"{pattern}" {keyword}',
-    'intitle:{pattern} filetype:pdf {keyword}',
-]
-
-SITE_TEMPLATES = [
-    "site:{domain} {keyword}",
-    'site:{domain} "{keyword}"',
-    "site:{domain} intext:{keyword}",
-    "site:{domain} inurl:{keyword}",
-    'site:{domain} intitle:"{keyword}"',
-    "site:{domain} filetype:pdf {keyword}",
-    "site:{domain} filetype:doc {keyword}",
-    "site:{domain} filetype:xls {keyword}",
-    "site:{domain} inurl:admin {keyword}",
-    "site:{domain} inurl:login {keyword}",
-    "site:{domain} inurl:backup {keyword}",
-    "site:{domain} inurl:config {keyword}",
-    'site:{domain} intitle:"index of" {keyword}',
-    "site:{domain} ext:sql {keyword}",
-    "site:{domain} ext:env {keyword}",
-    "site:{domain} ext:log {keyword}",
-    "site:{domain} ext:bak {keyword}",
-]
-
-# --- SQLi dorktypes ---
-
-SQLI_PARAMS = [
-    "id=", "pid=", "cat=", "category=", "page=", "sid=", "uid=",
-    "user_id=", "product_id=", "item_id=", "news_id=", "article_id=",
-    "num=", "view=", "dir=", "file=", "action=", "cmd=", "query=",
-    "search=", "keyword=", "type=", "module=", "section=", "game_id=",
-    "staff_id=", "channel_id=", "item_id=", "decl_id=", "pageid=",
-]
-
-SQLI_PAGES = [
-    "index.php?id=", "product.php?id=", "article.php?id=", "news.php?id=",
-    "page.php?id=", "view.php?id=", "category.php?id=", "show.php?id=",
-    "detail.php?id=", "gallery.php?id=", "download.php?id=", "profile.php?id=",
-    "shop.php?id=", "games.php?id=", "sql.php?id=", "main.php?id=",
-    "newsDetail.php?id=", "readnews.php?id=", "article.php?ID=",
-    "buy.php?category=", "trainers.php?id=", "play_old.php?id=",
-    "page.php?file=", "newsitem.php?num=", "top10.php?cat=",
-    "view_product.php?id=", "productinfo.php?id=", "memberInfo.php?id=",
-    "announce.php?id=", "material.php?id=", "story.php?id=",
-]
-
-SQLI_ERRORS = [
-    "You have an error in your SQL syntax",
-    "mysql_fetch_array()",
-    "mysql_fetch_assoc()",
-    "mysql_num_rows()",
-    "Warning: mysql_query()",
-    "mysqli_fetch_array()",
-    "PostgreSQL query failed",
-    "ORA-01756",
-    "Microsoft OLE DB Provider for SQL Server",
-    "Unclosed quotation mark",
-    "quoted string not properly terminated",
-    "SQL syntax",
-    "Error Executing Database Query",
-    "Error Occurred While Processing Request",
-    "Warning: pg_exec()",
-]
-
-SQLI_PARAM_TEMPLATES = [
-    "inurl:{param} {keyword}",
-    "inurl:{param} intext:{keyword}",
-    'inurl:{param} "{keyword}"',
-    "filetype:php inurl:{param} {keyword}",
-    "ext:php inurl:{param} {keyword}",
-]
-
-SQLI_PAGE_TEMPLATES = [
-    "inurl:{page} {keyword}",
-    "allinurl:{page} {keyword}",
-    'inurl:{page} intext:"{keyword}"',
-    "filetype:php inurl:{page} {keyword}",
-]
-
-SQLI_ERROR_TEMPLATES = [
-    'inurl:id= intext:"{error}" {keyword}',
-    'inurl:cat= intext:"{error}" {keyword}',
-    'inurl:page= intext:"{error}" {keyword}',
-    'intext:"{error}" {keyword}',
-    'intext:"{error}" intext:{keyword}',
-    'filetype:php intext:"{error}" {keyword}',
-]
-
-SQLI_COMBO_TEMPLATES = [
-    'inurl:{param} intext:"{error}" {keyword}',
-    'inurl:{page} intext:"{error}" {keyword}',
-    'filetype:php inurl:{param} intext:"{error}" {keyword}',
-]
-
-SQLI_SITE_TEMPLATES = [
-    "site:{domain} inurl:id= {keyword}",
-    "site:{domain} inurl:cat= {keyword}",
-    "site:{domain} inurl:page= {keyword}",
-    "site:{domain} inurl:index.php?id= {keyword}",
-    "site:{domain} inurl:product.php?id= {keyword}",
-    "site:{domain} inurl:article.php?id= {keyword}",
-    "site:{domain} inurl:news.php?id= {keyword}",
-    'site:{domain} inurl:id= intext:"You have an error in your SQL syntax" {keyword}',
-    'site:{domain} inurl:id= intext:"mysql_fetch_array()" {keyword}',
-    "site:{domain} filetype:php inurl:id= {keyword}",
-    "site:{domain} filetype:php inurl:cat= {keyword}",
-    'site:{domain} intext:"SQL syntax" {keyword}',
-]
-
-SQLI_FILE_TEMPLATES = [
-    'filetype:sql "{keyword}"',
-    'filetype:sql intext:{keyword}',
-    'filetype:sql "dump" {keyword}',
-    'filetype:sql "backup" {keyword}',
-    'filetype:sql "insert into" {keyword}',
-    'filetype:env "DB_PASSWORD" {keyword}',
-    'filetype:env "MYSQL" {keyword}',
-    'filetype:log intext:"sql" {keyword}',
-    'filetype:bak intext:"sql" {keyword}',
-    'filetype:php inurl:config intext:{keyword}',
-    'filetype:php inurl:db intext:{keyword}',
+SITE_KEYWORD_TEMPLATES = [
+    "site:{domain} {qkeyword}",
+    "site:{domain} inurl:admin {qkeyword}",
+    "site:{domain} inurl:login {qkeyword}",
+    "site:{domain} inurl:id= {qkeyword}",
+    "site:{domain} inurl:index.php?id= {qkeyword}",
+    "site:{domain} filetype:pdf {qkeyword}",
+    "site:{domain} filetype:sql {qkeyword}",
+    'site:{domain} intitle:"index of" {qkeyword}',
+    'site:{domain} inurl:id= intext:"mysql_fetch_array()" {qkeyword}',
 ]
 
 
-def load_lines(path: Path) -> list[str]:
+def quote_keyword(keyword: str) -> str:
+    keyword = keyword.strip()
+    if " " in keyword:
+        return f'"{keyword}"'
+    return keyword
+
+
+def load_lines(path: Path, required: bool = True) -> list[str]:
     if not path.exists():
-        raise FileNotFoundError(f"Fichier introuvable : {path}")
+        if required:
+            raise FileNotFoundError(f"Fichier introuvable : {path}")
+        return []
 
     lines = []
     seen = set()
@@ -180,10 +215,90 @@ def load_lines(path: Path) -> list[str]:
         seen.add(value)
         lines.append(value)
 
-    if not lines:
+    if required and not lines:
         raise ValueError(f"Aucune entrée trouvée dans {path}")
 
     return lines
+
+
+def apply_domains(base_dorks: set[str], domains: list[str]) -> set[str]:
+    if not domains:
+        return set()
+
+    site_dorks: set[str] = set()
+    for domain in domains:
+        for dork in base_dorks:
+            site_dorks.add(f"site:{domain} {dork}")
+        for template in SITE_DORK_TEMPLATES:
+            site_dorks.add(template.format(domain=domain))
+    return site_dorks
+
+
+def generate_google_dorks(
+    keywords: list[str],
+    domains: list[str],
+    include_site: bool = True,
+) -> set[str]:
+    dorks = set(PURE_GOOGLE_DORKS) | set(PURE_SQLI_DORKS)
+
+    if include_site and domains:
+        dorks.update(apply_domains(dorks, domains))
+
+    for keyword in keywords:
+        qkeyword = quote_keyword(keyword)
+        for template in KEYWORD_DORK_TEMPLATES:
+            dorks.add(template.format(keyword=keyword, qkeyword=qkeyword))
+
+        if include_site and domains:
+            for domain, template in product(domains, SITE_KEYWORD_TEMPLATES):
+                dorks.add(template.format(domain=domain, keyword=keyword, qkeyword=qkeyword))
+
+    return dorks
+
+
+def generate_sqli_dorks(
+    keywords: list[str],
+    domains: list[str],
+    include_site: bool = True,
+) -> set[str]:
+    dorks = set(PURE_SQLI_DORKS)
+
+    for keyword in keywords:
+        qkeyword = quote_keyword(keyword)
+        sqli_keyword_templates = [
+            "inurl:id= {qkeyword}",
+            "inurl:cat= {qkeyword}",
+            "inurl:page= {qkeyword}",
+            "inurl:index.php?id= {qkeyword}",
+            "inurl:product.php?id= {qkeyword}",
+            "inurl:article.php?id= {qkeyword}",
+            "allinurl:index.php?id= {qkeyword}",
+            'inurl:id= intext:"mysql_fetch_array()" {qkeyword}',
+            'inurl:id= intext:"You have an error in your SQL syntax" {qkeyword}',
+            'filetype:php inurl:id= {qkeyword}',
+            'filetype:php intext:"mysql_fetch_array()" {qkeyword}',
+            'filetype:sql {qkeyword}',
+            'filetype:env "DB_PASSWORD" {qkeyword}',
+        ]
+        for template in sqli_keyword_templates:
+            dorks.add(template.format(qkeyword=qkeyword))
+
+    if include_site and domains:
+        for domain in domains:
+            for dork in PURE_SQLI_DORKS:
+                dorks.add(f"site:{domain} {dork}")
+            for template in SITE_DORK_TEMPLATES:
+                if "id=" in template or "sql" in template.lower() or "mysql" in template.lower():
+                    dorks.add(template.format(domain=domain))
+            for keyword in keywords:
+                qkeyword = quote_keyword(keyword)
+                for template in SITE_KEYWORD_TEMPLATES:
+                    if "id=" in template or "mysql" in template or "sql" in template:
+                        dorks.add(
+                            template.format(domain=domain, keyword=keyword, qkeyword=qkeyword)
+                        )
+
+    return dorks
 
 
 def generate_generic_dorks(
@@ -194,78 +309,38 @@ def generate_generic_dorks(
     include_intitle: bool = True,
     include_site: bool = True,
 ) -> set[str]:
-    dorks: set[str] = set()
+    dorks = set(PURE_GOOGLE_DORKS)
+
+    if include_filetypes:
+        for ext in FILE_TYPES:
+            dorks.add(f"filetype:{ext}")
+            dorks.add(f'filetype:{ext} intext:password')
+
+    if include_inurl:
+        for pattern in INURL_PATTERNS:
+            dorks.add(f"inurl:{pattern}")
+
+    if include_intitle:
+        for pattern in INTITLE_PATTERNS:
+            dorks.add(f'intitle:"{pattern}"')
 
     for keyword in keywords:
-        for template in BASIC_TEMPLATES:
-            dorks.add(template.format(keyword=keyword))
+        qkeyword = quote_keyword(keyword)
+        for template in KEYWORD_DORK_TEMPLATES:
+            dorks.add(template.format(keyword=keyword, qkeyword=qkeyword))
 
-        if include_filetypes:
-            for ext, template in product(FILE_TYPES, FILETYPE_TEMPLATES):
-                dorks.add(template.format(ext=ext, keyword=keyword))
-
-        if include_inurl:
-            for pattern, template in product(INURL_PATTERNS, INURL_TEMPLATES):
-                dorks.add(template.format(pattern=pattern, keyword=keyword))
-
-        if include_intitle:
-            for pattern, template in product(INTITLE_PATTERNS, INTITLE_TEMPLATES):
-                dorks.add(template.format(pattern=pattern, keyword=keyword))
-
-        if include_site and domains:
-            for domain, template in product(domains, SITE_TEMPLATES):
-                dorks.add(template.format(domain=domain, keyword=keyword))
-
-    return dorks
-
-
-def generate_sqli_dorks(
-    keywords: list[str],
-    domains: list[str],
-    include_site: bool = True,
-) -> set[str]:
-    dorks: set[str] = set()
-    top_params = SQLI_PARAMS[:20]
-    top_pages = SQLI_PAGES[:20]
-    top_errors = SQLI_ERRORS[:10]
-
-    for keyword in keywords:
-        for param, template in product(top_params, SQLI_PARAM_TEMPLATES):
-            dorks.add(template.format(param=param, keyword=keyword))
-
-        for page, template in product(top_pages, SQLI_PAGE_TEMPLATES):
-            dorks.add(template.format(page=page, keyword=keyword))
-
-        for error, template in product(SQLI_ERRORS, SQLI_ERROR_TEMPLATES):
-            dorks.add(template.format(error=error, keyword=keyword))
-
-        for param, error in product(top_params[:10], top_errors):
-            dorks.add(
-                SQLI_COMBO_TEMPLATES[0].format(param=param, error=error, keyword=keyword)
-            )
-
-        for page, error in product(top_pages[:8], top_errors[:6]):
-            dorks.add(
-                SQLI_COMBO_TEMPLATES[1].format(page=page, error=error, keyword=keyword)
-            )
-
-        for param, error in product(top_params[:6], top_errors[:4]):
-            dorks.add(
-                SQLI_COMBO_TEMPLATES[2].format(param=param, error=error, keyword=keyword)
-            )
-
-        for template in SQLI_FILE_TEMPLATES:
-            dorks.add(template.format(keyword=keyword))
-
-        if include_site and domains:
-            for domain, template in product(domains, SQLI_SITE_TEMPLATES):
-                dorks.add(template.format(domain=domain, keyword=keyword))
+    if include_site and domains:
+        dorks.update(apply_domains(dorks, domains))
+        for keyword in keywords:
+            qkeyword = quote_keyword(keyword)
+            for domain, template in product(domains, SITE_KEYWORD_TEMPLATES):
+                dorks.add(template.format(domain=domain, keyword=keyword, qkeyword=qkeyword))
 
     return dorks
 
 
 def generate_dorks(
-    keywords: list[str],
+    keywords: list[str] | None = None,
     domains: list[str] | None = None,
     dork_types: list[str] | None = None,
     include_filetypes: bool = True,
@@ -273,18 +348,36 @@ def generate_dorks(
     include_intitle: bool = True,
     include_site: bool = True,
 ) -> set[str]:
+    keywords = keywords or []
     domains = domains or []
-    dork_types = dork_types or ["generic"]
-    use_generic = "all" in dork_types or "generic" in dork_types
-    use_sqli = "all" in dork_types or "sqli" in dork_types
+    dork_types = dork_types or ["google"]
 
+    types = set(dork_types or ["google"])
     dorks: set[str] = set()
 
-    if use_generic:
+    if "all" in types:
+        dorks.update(generate_google_dorks(keywords, domains, include_site=include_site))
         dorks.update(
             generate_generic_dorks(
-                keywords,
-                domains,
+                keywords, domains,
+                include_filetypes=include_filetypes,
+                include_inurl=include_inurl,
+                include_intitle=include_intitle,
+                include_site=include_site,
+            )
+        )
+        return dorks
+
+    if "google" in types:
+        dorks.update(generate_google_dorks(keywords, domains, include_site=include_site))
+
+    if "sqli" in types:
+        dorks.update(generate_sqli_dorks(keywords, domains, include_site=include_site))
+
+    if "generic" in types:
+        dorks.update(
+            generate_generic_dorks(
+                keywords, domains,
                 include_filetypes=include_filetypes,
                 include_inurl=include_inurl,
                 include_intitle=include_intitle,
@@ -292,37 +385,26 @@ def generate_dorks(
             )
         )
 
-    if use_sqli:
-        dorks.update(
-            generate_sqli_dorks(
-                keywords,
-                domains,
-                include_site=include_site,
-            )
-        )
-
     return dorks
 
 
-def save_dorks(dorks: set[str], output_path: Path) -> None:
-    output_path.write_text(
-        "\n".join(sorted(dorks)) + "\n",
-        encoding="utf-8",
-    )
+def to_google_url(dork: str) -> str:
+    return GOOGLE_SEARCH_URL + quote_plus(dork)
+
+
+def save_dorks(dorks: set[str], output_path: Path, as_urls: bool = False) -> None:
+    lines = sorted(to_google_url(d) if as_urls else d for d in dorks)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Génère des Google dorks à partir d'un fichier de keywords. "
-            "Supporte les dorktypes generic et sqli."
-        )
+        description="Génère des Google dorks prêts à coller dans Google Search."
     )
     parser.add_argument(
         "input",
         nargs="?",
-        default="keywords.txt",
-        help="Fichier txt de keywords (défaut: keywords.txt)",
+        help="Fichier txt de keywords (optionnel si --pure)",
     )
     parser.add_argument(
         "-o",
@@ -339,56 +421,75 @@ def parse_args() -> argparse.Namespace:
         "-t",
         "--type",
         choices=DORK_TYPES,
-        default="sqli",
-        help="Type de dorks : generic, sqli ou all (défaut: sqli)",
+        default="google",
+        help="Type : google (défaut), sqli, generic, all",
+    )
+    parser.add_argument(
+        "--pure",
+        action="store_true",
+        help="Génère les dorks Google purs sans keywords",
+    )
+    parser.add_argument(
+        "--urls",
+        action="store_true",
+        help="Exporte les URLs Google Search au lieu des dorks bruts",
     )
     parser.add_argument(
         "--no-filetypes",
         action="store_true",
-        help="Désactive les dorks filetype/ext (generic uniquement)",
+        help="Désactive filetypes (generic)",
     )
     parser.add_argument(
         "--no-inurl",
         action="store_true",
-        help="Désactive les dorks inurl (generic uniquement)",
+        help="Désactive inurl (generic)",
     )
     parser.add_argument(
         "--no-intitle",
         action="store_true",
-        help="Désactive les dorks intitle (generic uniquement)",
+        help="Désactive intitle (generic)",
     )
     parser.add_argument(
         "--no-site",
         action="store_true",
-        help="Désactive les dorks site: même si un fichier domaines est fourni",
+        help="Désactive site:",
     )
     return parser.parse_args()
 
 
 def run_generator(
-    input_path: Path,
+    input_path: Path | None = None,
     output_path: Path | None = None,
     domains_path: Path | None = None,
     dork_types: list[str] | None = None,
+    pure: bool = False,
+    as_urls: bool = False,
     include_filetypes: bool = True,
     include_inurl: bool = True,
     include_intitle: bool = True,
     include_site: bool = True,
 ) -> tuple[int, Path]:
+    dork_types = dork_types or ["google"]
+
     if output_path is None:
-        suffix = (dork_types or ["sqli"])[0]
-        output_path = input_path.with_name(f"{input_path.stem}_{suffix}_dorks.txt")
+        suffix = dork_types[0]
+        base = input_path.stem if input_path else "google"
+        output_path = Path(f"{base}_{suffix}_dorks.txt")
 
-    keywords = load_lines(input_path)
-    domains = load_lines(domains_path) if domains_path else []
+    keywords: list[str] = []
+    if input_path and not pure:
+        keywords = load_lines(input_path, required=True)
+        print(f"{len(keywords)} keywords chargés depuis {input_path}")
+    elif pure:
+        print("Mode pure : dorks Google sans keywords")
 
-    print(f"{len(keywords)} keywords chargés depuis {input_path}")
-    print(f"Dorktypes : {', '.join(dork_types or ['sqli'])}")
+    domains = load_lines(domains_path, required=False) if domains_path else []
+    print(f"Dorktype : {', '.join(dork_types)}")
     if domains:
         print(f"{len(domains)} domaines chargés depuis {domains_path}")
 
     dorks = generate_dorks(
-        keywords,
+        keywords=keywords,
         domains=domains,
         dork_types=dork_types,
         include_filetypes=include_filetypes,
@@ -396,21 +497,28 @@ def run_generator(
         include_intitle=include_intitle,
         include_site=include_site and bool(domains),
     )
-    save_dorks(dorks, output_path)
+    save_dorks(dorks, output_path, as_urls=as_urls)
 
-    print(f"{len(dorks)} dorks générés -> {output_path}")
+    format_label = "URLs Google" if as_urls else "dorks Google"
+    print(f"{len(dorks)} {format_label} -> {output_path}")
     return len(dorks), output_path
 
 
 def main() -> None:
     args = parse_args()
 
+    if not args.pure and not args.input:
+        print("Indique un fichier keywords ou utilise --pure", file=sys.stderr)
+        sys.exit(1)
+
     try:
         run_generator(
-            input_path=Path(args.input),
+            input_path=Path(args.input) if args.input else None,
             output_path=Path(args.output),
             domains_path=Path(args.domains) if args.domains else None,
             dork_types=[args.type],
+            pure=args.pure,
+            as_urls=args.urls,
             include_filetypes=not args.no_filetypes,
             include_inurl=not args.no_inurl,
             include_intitle=not args.no_intitle,

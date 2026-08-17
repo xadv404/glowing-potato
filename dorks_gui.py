@@ -10,7 +10,7 @@ from dorks import DORK_TYPES, run_generator
 class DorkGeneratorApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Dork Generator")
+        self.title("Google Dork Generator")
         self.resizable(False, False)
         self.keywords_file: Path | None = None
         self.domains_file: Path | None = None
@@ -21,17 +21,17 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             self,
-            text="Dork Generator",
+            text="Google Dork Generator",
             font=("Segoe UI", 14, "bold"),
         ).grid(row=0, column=0, columnspan=2, sticky="w", **padding)
 
-        ttk.Label(self, text="Fichier keywords (.txt) :").grid(
+        ttk.Label(self, text="Fichier keywords (.txt, optionnel) :").grid(
             row=1, column=0, columnspan=2, sticky="w", **padding
         )
 
         self.keywords_label = ttk.Label(
             self,
-            text="Aucun fichier sélectionné",
+            text="Aucun — dorks Google purs",
             width=50,
             anchor="w",
         )
@@ -43,13 +43,19 @@ class DorkGeneratorApp(tk.Tk):
             command=self._select_keywords,
         ).grid(row=3, column=0, sticky="w", **padding)
 
+        ttk.Button(
+            self,
+            text="Retirer keywords",
+            command=self._clear_keywords,
+        ).grid(row=3, column=1, sticky="e", **padding)
+
         ttk.Label(self, text="Fichier domaines (.txt, optionnel) :").grid(
             row=4, column=0, columnspan=2, sticky="w", **padding
         )
 
         self.domains_label = ttk.Label(
             self,
-            text="Aucun (dorks sans site:)",
+            text="Aucun (sans site:)",
             width=50,
             anchor="w",
         )
@@ -67,49 +73,52 @@ class DorkGeneratorApp(tk.Tk):
             command=self._clear_domains,
         ).grid(row=6, column=1, sticky="e", **padding)
 
-        type_frame = ttk.LabelFrame(self, text="Dorktype")
+        type_frame = ttk.LabelFrame(self, text="Dorktype Google")
         type_frame.grid(row=7, column=0, columnspan=2, sticky="ew", padx=12, pady=8)
 
-        self.dorktype_var = tk.StringVar(value="sqli")
-        dorktype_combo = ttk.Combobox(
+        self.dorktype_var = tk.StringVar(value="google")
+        ttk.Combobox(
             type_frame,
             textvariable=self.dorktype_var,
             values=list(DORK_TYPES),
             state="readonly",
             width=20,
-        )
-        dorktype_combo.grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        ).grid(row=0, column=0, sticky="w", padx=8, pady=6)
+
         ttk.Label(
             type_frame,
-            text="sqli = paramètres URL + erreurs SQL + pages PHP",
+            text="google = dorks purs + keywords (inurl, intitle, filetype, site:)",
         ).grid(row=0, column=1, sticky="w", padx=8, pady=6)
 
-        options_frame = ttk.LabelFrame(self, text="Options (generic)")
+        options_frame = ttk.LabelFrame(self, text="Options")
         options_frame.grid(row=8, column=0, columnspan=2, sticky="ew", padx=12, pady=8)
 
+        self.urls_var = tk.BooleanVar(value=False)
         self.filetypes_var = tk.BooleanVar(value=True)
         self.inurl_var = tk.BooleanVar(value=True)
         self.intitle_var = tk.BooleanVar(value=True)
         self.site_var = tk.BooleanVar(value=True)
 
         ttk.Checkbutton(
-            options_frame, text="Filetypes / ext", variable=self.filetypes_var
+            options_frame, text="Exporter URLs Google", variable=self.urls_var
         ).grid(row=0, column=0, sticky="w", padx=8, pady=4)
         ttk.Checkbutton(
-            options_frame, text="Inurl", variable=self.inurl_var
+            options_frame, text="Filetypes", variable=self.filetypes_var
         ).grid(row=0, column=1, sticky="w", padx=8, pady=4)
         ttk.Checkbutton(
-            options_frame, text="Intitle", variable=self.intitle_var
+            options_frame, text="Inurl", variable=self.inurl_var
         ).grid(row=1, column=0, sticky="w", padx=8, pady=4)
         ttk.Checkbutton(
-            options_frame, text="Site:", variable=self.site_var
+            options_frame, text="Intitle", variable=self.intitle_var
         ).grid(row=1, column=1, sticky="w", padx=8, pady=4)
+        ttk.Checkbutton(
+            options_frame, text="Site:", variable=self.site_var
+        ).grid(row=2, column=0, sticky="w", padx=8, pady=4)
 
         self.start_button = ttk.Button(
             self,
-            text="Générer les dorks",
+            text="Générer les Google dorks",
             command=self._start_generation,
-            state="disabled",
         )
         self.start_button.grid(row=9, column=0, columnspan=2, sticky="e", **padding)
 
@@ -130,8 +139,12 @@ class DorkGeneratorApp(tk.Tk):
 
         self.keywords_file = Path(file_path)
         self.keywords_label.config(text=str(self.keywords_file))
-        self.start_button.config(state="normal")
-        self.status_label.config(text="Keywords sélectionnés. Clique sur Générer.")
+        self.status_label.config(text="Keywords sélectionnés.")
+
+    def _clear_keywords(self) -> None:
+        self.keywords_file = None
+        self.keywords_label.config(text="Aucun — dorks Google purs")
+        self.status_label.config(text="Mode dorks purs.")
 
     def _select_domains(self) -> None:
         file_path = filedialog.askopenfilename(
@@ -151,14 +164,10 @@ class DorkGeneratorApp(tk.Tk):
 
     def _clear_domains(self) -> None:
         self.domains_file = None
-        self.domains_label.config(text="Aucun (dorks sans site:)")
+        self.domains_label.config(text="Aucun (sans site:)")
         self.status_label.config(text="Domaines retirés.")
 
     def _start_generation(self) -> None:
-        if self.keywords_file is None:
-            messagebox.showwarning("Attention", "Sélectionne d'abord un fichier keywords.")
-            return
-
         self.start_button.config(state="disabled")
         self.status_label.config(text="Génération en cours...")
 
@@ -166,13 +175,13 @@ class DorkGeneratorApp(tk.Tk):
         thread.start()
 
     def _run_generator(self) -> None:
-        assert self.keywords_file is not None
-
         try:
             count, output_path = run_generator(
                 input_path=self.keywords_file,
                 domains_path=self.domains_file,
                 dork_types=[self.dorktype_var.get()],
+                pure=self.keywords_file is None,
+                as_urls=self.urls_var.get(),
                 include_filetypes=self.filetypes_var.get(),
                 include_inurl=self.inurl_var.get(),
                 include_intitle=self.intitle_var.get(),
@@ -193,9 +202,10 @@ class DorkGeneratorApp(tk.Tk):
     def _on_success(self, count: int, output_path: Path) -> None:
         self.start_button.config(state="normal")
         self.status_label.config(text="Terminé.")
+        label = "URLs Google" if self.urls_var.get() else "Google dorks"
         messagebox.showinfo(
             "Terminé",
-            f"{count} dorks générés dans :\n{output_path}",
+            f"{count} {label} générés dans :\n{output_path}",
         )
 
     def _on_error(self, message: str) -> None:
