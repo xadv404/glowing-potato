@@ -4,7 +4,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from dorks import run_generator
+from dorks import DORK_TYPES, run_generator
 
 
 class DorkGeneratorApp(tk.Tk):
@@ -67,8 +67,25 @@ class DorkGeneratorApp(tk.Tk):
             command=self._clear_domains,
         ).grid(row=6, column=1, sticky="e", **padding)
 
-        options_frame = ttk.LabelFrame(self, text="Options")
-        options_frame.grid(row=7, column=0, columnspan=2, sticky="ew", padx=12, pady=8)
+        type_frame = ttk.LabelFrame(self, text="Dorktype")
+        type_frame.grid(row=7, column=0, columnspan=2, sticky="ew", padx=12, pady=8)
+
+        self.dorktype_var = tk.StringVar(value="sqli")
+        dorktype_combo = ttk.Combobox(
+            type_frame,
+            textvariable=self.dorktype_var,
+            values=list(DORK_TYPES),
+            state="readonly",
+            width=20,
+        )
+        dorktype_combo.grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        ttk.Label(
+            type_frame,
+            text="sqli = paramètres URL + erreurs SQL + pages PHP",
+        ).grid(row=0, column=1, sticky="w", padx=8, pady=6)
+
+        options_frame = ttk.LabelFrame(self, text="Options (generic)")
+        options_frame.grid(row=8, column=0, columnspan=2, sticky="ew", padx=12, pady=8)
 
         self.filetypes_var = tk.BooleanVar(value=True)
         self.inurl_var = tk.BooleanVar(value=True)
@@ -94,10 +111,10 @@ class DorkGeneratorApp(tk.Tk):
             command=self._start_generation,
             state="disabled",
         )
-        self.start_button.grid(row=8, column=0, columnspan=2, sticky="e", **padding)
+        self.start_button.grid(row=9, column=0, columnspan=2, sticky="e", **padding)
 
         self.status_label = ttk.Label(self, text="Prêt.")
-        self.status_label.grid(row=9, column=0, columnspan=2, sticky="w", **padding)
+        self.status_label.grid(row=10, column=0, columnspan=2, sticky="w", **padding)
 
     def _select_keywords(self) -> None:
         file_path = filedialog.askopenfilename(
@@ -155,6 +172,7 @@ class DorkGeneratorApp(tk.Tk):
             count, output_path = run_generator(
                 input_path=self.keywords_file,
                 domains_path=self.domains_file,
+                dork_types=[self.dorktype_var.get()],
                 include_filetypes=self.filetypes_var.get(),
                 include_inurl=self.inurl_var.get(),
                 include_intitle=self.intitle_var.get(),
