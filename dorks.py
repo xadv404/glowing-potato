@@ -3,7 +3,60 @@ import argparse
 import sys
 from pathlib import Path
 
-DORK_TYPES = ("google", "sqli", "generic", "login", "lfi")
+DORK_TYPES = ("sqli", "login", "lfi", "generic", "google")
+
+# Patterns Google dorks reconnus (sources: dorkplus, trixsec, neospl0it/Dorks)
+# {q} = keyword (entre guillemets si plusieurs mots)
+DORK_PATTERNS: dict[str, list[str]] = {
+    "sqli": [
+        "inurl:index.php?id= {q}",
+        "inurl:product.php?id= {q}",
+        "inurl:article.php?id= {q}",
+        "inurl:page.php?id= {q}",
+        "inurl:view.php?id= {q}",
+        "inurl:category.php?id= {q}",
+        "inurl:news.php?id= {q}",
+        "inurl:.php?id= {q}",
+        'inurl:".php?cat=" {q}',
+        "inurl:search.php?q= {q}",
+        "filetype:php inurl:id= {q}",
+        'inurl:id= intext:"You have an error in your SQL syntax" {q}',
+        'inurl:id= intext:"mysql_fetch_array()" {q}',
+    ],
+    "login": [
+        "inurl:login.php {q}",
+        "inurl:admin/login.php {q}",
+        "inurl:admin intitle:login {q}",
+        'intitle:"admin login" {q}',
+        "inurl:wp-admin {q}",
+        "inurl:administrator/index.php {q}",
+        "inurl:admin intext:password {q}",
+    ],
+    "lfi": [
+        "inurl:page= {q}",
+        "inurl:file= {q}",
+        "inurl:include= {q}",
+        "inurl:path= {q}",
+        "inurl:read.php?file= {q}",
+        'inurl:page= intext:"Warning: include" {q}',
+    ],
+    "generic": [
+        'intitle:"index of" {q}',
+        'filetype:sql "backup" {q}',
+        'filetype:env "DB_PASSWORD" {q}',
+        'intext:"password" filetype:txt {q}',
+        "inurl:backup {q}",
+        "inurl:config {q}",
+        'filetype:log intext:password {q}',
+    ],
+    "google": [
+        "inurl:admin {q}",
+        "inurl:api {q}",
+        "inurl:upload {q}",
+        "filetype:pdf {q}",
+        "filetype:sql {q}",
+    ],
+}
 
 
 def quote_keyword(keyword: str) -> str:
@@ -33,22 +86,21 @@ def load_lines(path: Path) -> list[str]:
     return lines
 
 
+def pick_pattern(keyword: str, dork_type: str) -> str:
+    patterns = DORK_PATTERNS.get(dork_type)
+    if not patterns:
+        raise ValueError(f"Dorktype inconnu : {dork_type}")
+    return patterns[hash(keyword) % len(patterns)]
+
+
 def build_dork(keyword: str, dork_type: str, domain: str | None = None) -> str:
     q = quote_keyword(keyword)
-    prefix = f"site:{domain} " if domain else ""
+    pattern = pick_pattern(keyword, dork_type)
+    dork = pattern.format(q=q)
 
-    templates = {
-        "google": f"{prefix}intext:{q} inurl:id=",
-        "sqli": f'{prefix}inurl:id= intext:{q}',
-        "generic": f"{prefix}filetype:pdf intext:{q}",
-        "login": f"{prefix}inurl:login intext:{q}",
-        "lfi": f"{prefix}inurl:page= intext:{q}",
-    }
-
-    if dork_type not in templates:
-        raise ValueError(f"Dorktype inconnu : {dork_type}")
-
-    return templates[dork_type]
+    if domain:
+        return f"site:{domain} {dork}"
+    return dork
 
 
 def generate_dorks(
@@ -66,8 +118,8 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Génère 1 Google dork par keyword. "
-            "Lit un fichier txt (1 keyword/ligne), écrit 1 dork/ligne."
+            "Génère 1 Google dork par keyword (patterns reconnus). "
+            "Lit un txt (1 keyword/ligne), écrit 1 dork/ligne."
         )
     )
     parser.add_argument(

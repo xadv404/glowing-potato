@@ -56,7 +56,7 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             type_frame,
-            text="1 Google dork généré par keyword",
+            text="Patterns Google reconnus — 1 dork/keyword",
         ).grid(row=0, column=1, sticky="w", padx=8, pady=6)
 
         ttk.Label(self, text="Domaine (optionnel, ex: example.com) :").grid(
