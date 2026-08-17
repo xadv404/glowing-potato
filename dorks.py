@@ -3,8 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
-# Google dorks SQLi — patterns reconnus (dorkplus, trixsec, neospl0it/Dorks)
-# Chaque keyword génère plusieurs dorks (1 par ligne)
+# Google dorks SQLi — 1 keyword = 1 dork (pattern adapté automatiquement)
 SQLI_TEMPLATES = [
     # Paramètres URL
     "inurl:id= {q}",
@@ -103,26 +102,20 @@ def load_lines(path: Path) -> list[str]:
     return lines
 
 
+def pick_sqli_template(keyword: str) -> str:
+    return SQLI_TEMPLATES[hash(keyword) % len(SQLI_TEMPLATES)]
+
+
+def build_dork(keyword: str, domain: str | None = None) -> str:
+    q = quote_keyword(keyword)
+    dork = pick_sqli_template(keyword).format(q=q)
+    if domain:
+        return f"site:{domain} {dork}"
+    return dork
+
+
 def generate_dorks(keywords: list[str], domain: str | None = None) -> list[str]:
-    dorks: list[str] = []
-    seen: set[str] = set()
-
-    for keyword in keywords:
-        q = quote_keyword(keyword)
-
-        for template in SQLI_TEMPLATES:
-            dork = template.format(q=q)
-            if dork not in seen:
-                seen.add(dork)
-                dorks.append(dork)
-
-            if domain:
-                site_dork = f"site:{domain} {dork}"
-                if site_dork not in seen:
-                    seen.add(site_dork)
-                    dorks.append(site_dork)
-
-    return dorks
+    return [build_dork(keyword, domain) for keyword in keywords]
 
 
 def save_dorks(dorks: list[str], output_path: Path) -> None:
@@ -132,8 +125,8 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Génère des Google dorks SQLi à partir de keywords. "
-            "Plusieurs dorks par keyword, 1 dork par ligne."
+            "Génère 1 Google dork SQLi par keyword. "
+            "Le dorktype est choisi automatiquement parmi 62 patterns."
         )
     )
     parser.add_argument(
@@ -157,7 +150,7 @@ def run_generator(
     input_path: Path,
     output_path: Path | None = None,
     domain: str | None = None,
-) -> tuple[int, int, Path]:
+) -> tuple[int, Path]:
     if output_path is None:
         output_path = input_path.with_name(f"{input_path.stem}_sqli_dorks.txt")
 
@@ -165,16 +158,12 @@ def run_generator(
     dorks = generate_dorks(keywords, domain=domain)
     save_dorks(dorks, output_path)
 
-    per_keyword = len(SQLI_TEMPLATES) + (len(SQLI_TEMPLATES) if domain else 0)
-
-    print(f"{len(keywords)} keywords -> {len(dorks)} dorks SQLi")
-    print(f"{len(SQLI_TEMPLATES)} patterns x {len(keywords)} keywords", end="")
+    print(f"{len(keywords)} keywords -> {len(dorks)} dorks SQLi (1 par keyword)")
     if domain:
-        print(f" (+ site:{domain})", end="")
-    print()
+        print(f"Domaine : {domain}")
     print(f"Sauvegardé : {output_path}")
 
-    return len(keywords), len(dorks), output_path
+    return len(dorks), output_path
 
 
 def main() -> None:

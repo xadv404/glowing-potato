@@ -26,7 +26,7 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             self,
-            text=f"{len(SQLI_TEMPLATES)} dorktypes SQLi adaptés par keyword",
+            text="1 keyword = 1 dork SQLi (62 dorktypes en rotation)",
             font=("Segoe UI", 9),
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12)
 
@@ -101,7 +101,7 @@ class DorkGeneratorApp(tk.Tk):
         domain = self.domain_var.get().strip().lower() or None
 
         try:
-            kw_count, dork_count, output_path = run_generator(
+            kw_count, output_path = run_generator(
                 input_path=self.keywords_file,
                 domain=domain,
             )
@@ -115,17 +115,14 @@ class DorkGeneratorApp(tk.Tk):
             self.after(0, lambda: self._on_error(f"Erreur inattendue : {exc}"))
             return
 
-        self.after(0, lambda: self._on_success(kw_count, dork_count, output_path))
+        self.after(0, lambda: self._on_success(kw_count, output_path))
 
-    def _on_success(self, kw_count: int, dork_count: int, output_path: Path) -> None:
+    def _on_success(self, count: int, output_path: Path) -> None:
         self.start_button.config(state="normal")
         self.status_label.config(text="Terminé.")
-        per_kw = dork_count // kw_count if kw_count else 0
         messagebox.showinfo(
             "Terminé",
-            f"{dork_count} dorks SQLi générés\n"
-            f"({kw_count} keywords x ~{per_kw} dorktypes)\n\n"
-            f"{output_path}",
+            f"{count} dorks SQLi générés (1 par keyword) :\n{output_path}",
         )
 
     def _on_error(self, message: str) -> None:
