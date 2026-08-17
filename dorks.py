@@ -3,75 +3,67 @@ import argparse
 import sys
 from pathlib import Path
 
-# Google dorks SQLi — 1 keyword = 1 dork (pattern adapté automatiquement)
-SQLI_TEMPLATES = [
-    # Paramètres URL
+# Google dorks SQLi — 1 keyword = 1 dork
+# Sources: CVE-2026 advisories, GHDB 2026, SecOps-Google-Dork-Collection
+# {q} = keyword (guillemets si plusieurs mots)
+
+SQLI_CVE_2026_TEMPLATES = [
+    # CVE-2026-9082 — Drupal Core PostgreSQL SQLi (SA-CORE-2026-004)
+    'inurl:"/user/login?_format=json" {q}',
+    'inurl:"/jsonapi/node/" {q}',
+    'inurl:jsonapi intext:"Drupal" {q}',
+    # CVE-2026-56292 — AcyMailing Joomla SQLi
+    'inurl:"index.php?option=com_acym" {q}',
+    'inurl:option=com_acym {q}',
+    '"Powered by AcyMailing" {q}',
+    'inurl:"index.php?option=com_acym&ctrl=cron" {q}',
+    # CVE-2026-42031 — CKAN datastore_search_sql SQLi
+    'intitle:"CKAN" {q}',
+    'inurl:"/api/action/datastore_search_sql" {q}',
+    'inurl:"/api/action/status_show" intitle:"CKAN" {q}',
+    # CVE-2026-26980 — Ghost CMS Content API SQLi
+    '"data-ghost=" {q}',
+    'inurl:"/ghost/api/content/" {q}',
+    # CVE-2026-69083 — SiYuan SQLi
+    'inurl:"/api/search/fullTextSearchAssetContent" {q}',
+    'intitle:"SiYuan" {q}',
+    # GHDB 2026 — paramètres SQLi (SecOps / DorkPlus)
     "inurl:id= {q}",
     "inurl:pid= {q}",
     "inurl:cat= {q}",
     "inurl:category= {q}",
-    "inurl:page= {q}",
     "inurl:sid= {q}",
-    "inurl:uid= {q}",
-    "inurl:product_id= {q}",
-    "inurl:item_id= {q}",
-    "inurl:news_id= {q}",
-    "inurl:article_id= {q}",
-    "inurl:view= {q}",
-    "inurl:num= {q}",
-    "inurl:query= {q}",
-    "inurl:search= {q}",
-    # Pages PHP
+    "inurl:dir= {q}",
     "inurl:index.php?id= {q}",
     "inurl:product.php?id= {q}",
     "inurl:article.php?id= {q}",
-    "inurl:news.php?id= {q}",
     "inurl:page.php?id= {q}",
     "inurl:view.php?id= {q}",
+    "inurl:news.php?id= {q}",
     "inurl:category.php?id= {q}",
-    "inurl:show.php?id= {q}",
-    "inurl:detail.php?id= {q}",
-    "inurl:gallery.php?id= {q}",
-    "inurl:download.php?id= {q}",
-    "inurl:profile.php?id= {q}",
-    "inurl:shop.php?id= {q}",
-    "inurl:games.php?id= {q}",
-    "inurl:main.php?id= {q}",
-    "inurl:sql.php?id= {q}",
-    "inurl:buy.php?category= {q}",
-    "inurl:trainers.php?id= {q}",
-    "inurl:search.php?q= {q}",
     "inurl:.php?id= {q}",
     'inurl:".php?cat=" {q}',
     "allinurl:index.php?id= {q}",
-    "allinurl:product.php?id= {q}",
-    "allinurl:article.php?id= {q}",
-    # Error-based
+    # GHDB 2026 — error-based SQLi
     'inurl:id= intext:"You have an error in your SQL syntax" {q}',
     'inurl:id= intext:"mysql_fetch_array()" {q}',
     'inurl:id= intext:"mysql_fetch_assoc()" {q}',
-    'inurl:id= intext:"mysql_num_rows()" {q}',
     'inurl:id= intext:"Warning: mysql_query()" {q}',
-    'inurl:cat= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:page= intext:"You have an error in your SQL syntax" {q}',
     'intext:"You have an error in your SQL syntax" {q}',
-    'intext:"mysql_fetch_array()" {q}',
-    'intext:"select * from" {q}',
-    'intext:"ORA-00933: SQL command not properly ended" {q}',
+    'intext:"SQL syntax" intext:"error" {q}',
+    'intext:"database error" {q}',
+    'intext:"ORA-00933" {q}',
+    'intext:"Microsoft OLE DB Provider for SQL Server" {q}',
     'intext:"Unclosed quotation mark" {q}',
-    # Combos PHP + SQLi
+    # GHDB 2026 — combos
     "filetype:php inurl:id= {q}",
-    "filetype:php inurl:cat= {q}",
-    "filetype:php inurl:index.php?id= {q}",
-    "filetype:php inurl:product.php?id= {q}",
     'filetype:php intext:"mysql_fetch_array()" {q}',
-    'filetype:php intext:"You have an error in your SQL syntax" {q}',
     'inurl:.php?id= intext:"mysql" {q}',
-    # Fichiers sensibles SQL
     'filetype:sql "backup" {q}',
-    'filetype:sql "dump" {q}',
     'filetype:env "DB_PASSWORD" {q}',
-    'filetype:env "MYSQL" {q}',
+    # SecOps 2026 — SQLi-prone params (condensé)
+    "inurl:id= inurl:cat= inurl:action= {q}",
+    'inurl:"error" intext:"SQL syntax" {q}',
 ]
 
 
@@ -102,13 +94,13 @@ def load_lines(path: Path) -> list[str]:
     return lines
 
 
-def pick_sqli_template(keyword: str) -> str:
-    return SQLI_TEMPLATES[hash(keyword) % len(SQLI_TEMPLATES)]
+def pick_template(keyword: str) -> str:
+    return SQLI_CVE_2026_TEMPLATES[hash(keyword) % len(SQLI_CVE_2026_TEMPLATES)]
 
 
 def build_dork(keyword: str, domain: str | None = None) -> str:
     q = quote_keyword(keyword)
-    dork = pick_sqli_template(keyword).format(q=q)
+    dork = pick_template(keyword).format(q=q)
     if domain:
         return f"site:{domain} {dork}"
     return dork
@@ -125,8 +117,8 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Génère 1 Google dork SQLi par keyword. "
-            "Le dorktype est choisi automatiquement parmi 62 patterns."
+            "Génère 1 Google dork SQLi par keyword (CVE 2026 + GHDB). "
+            "Lit un txt (1 keyword/ligne), écrit 1 dork/ligne."
         )
     )
     parser.add_argument(
@@ -159,6 +151,7 @@ def run_generator(
     save_dorks(dorks, output_path)
 
     print(f"{len(keywords)} keywords -> {len(dorks)} dorks SQLi (1 par keyword)")
+    print(f"{len(SQLI_CVE_2026_TEMPLATES)} dorktypes CVE/GHDB 2026 en rotation")
     if domain:
         print(f"Domaine : {domain}")
     print(f"Sauvegardé : {output_path}")

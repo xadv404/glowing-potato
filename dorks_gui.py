@@ -4,13 +4,13 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from dorks import SQLI_TEMPLATES, run_generator
+from dorks import SQLI_CVE_2026_TEMPLATES, run_generator
 
 
 class DorkGeneratorApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("SQLi Dork Generator")
+        self.title("SQLi Dork Generator — CVE 2026")
         self.resizable(False, False)
         self.keywords_file: Path | None = None
         self._build_ui()
@@ -26,7 +26,7 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             self,
-            text="1 keyword = 1 dork SQLi (62 dorktypes en rotation)",
+            text=f"{len(SQLI_CVE_2026_TEMPLATES)} dorktypes CVE/GHDB 2026 — 1 keyword = 1 dork",
             font=("Segoe UI", 9),
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12)
 
@@ -101,7 +101,7 @@ class DorkGeneratorApp(tk.Tk):
         domain = self.domain_var.get().strip().lower() or None
 
         try:
-            kw_count, output_path = run_generator(
+            count, output_path = run_generator(
                 input_path=self.keywords_file,
                 domain=domain,
             )
@@ -115,14 +115,14 @@ class DorkGeneratorApp(tk.Tk):
             self.after(0, lambda: self._on_error(f"Erreur inattendue : {exc}"))
             return
 
-        self.after(0, lambda: self._on_success(kw_count, output_path))
+        self.after(0, lambda: self._on_success(count, output_path))
 
     def _on_success(self, count: int, output_path: Path) -> None:
         self.start_button.config(state="normal")
         self.status_label.config(text="Terminé.")
         messagebox.showinfo(
             "Terminé",
-            f"{count} dorks SQLi générés (1 par keyword) :\n{output_path}",
+            f"{count} dorks SQLi CVE/GHDB 2026 (1 par keyword) :\n{output_path}",
         )
 
     def _on_error(self, message: str) -> None:
