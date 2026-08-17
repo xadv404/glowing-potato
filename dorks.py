@@ -3,37 +3,24 @@ import argparse
 import sys
 from pathlib import Path
 
-# Google dorks SQLi — 1 keyword = 1 dork
-# Sources: CVE-2026 advisories, GHDB 2026, SecOps-Google-Dork-Collection
-# {q} = keyword (guillemets si plusieurs mots)
+# Google dorks SQLi — 100% SQL (params, erreurs, dumps, CVE SQL 2026)
+# Chaque template contient un opérateur/mot-clé SQL explicite
+# {q} = keyword
 
-SQLI_CVE_2026_TEMPLATES = [
-    # CVE-2026-9082 — Drupal Core PostgreSQL SQLi (SA-CORE-2026-004)
-    'inurl:"/user/login?_format=json" {q}',
-    'inurl:"/jsonapi/node/" {q}',
-    'inurl:jsonapi intext:"Drupal" {q}',
-    # CVE-2026-56292 — AcyMailing Joomla SQLi
-    'inurl:"index.php?option=com_acym" {q}',
-    'inurl:option=com_acym {q}',
-    '"Powered by AcyMailing" {q}',
-    'inurl:"index.php?option=com_acym&ctrl=cron" {q}',
-    # CVE-2026-42031 — CKAN datastore_search_sql SQLi
-    'intitle:"CKAN" {q}',
+SQLI_SQL_TEMPLATES = [
+    # CVE-2026 SQLi
     'inurl:"/api/action/datastore_search_sql" {q}',
-    'inurl:"/api/action/status_show" intitle:"CKAN" {q}',
-    # CVE-2026-26980 — Ghost CMS Content API SQLi
-    '"data-ghost=" {q}',
-    'inurl:"/ghost/api/content/" {q}',
-    # CVE-2026-69083 — SiYuan SQLi
-    'inurl:"/api/search/fullTextSearchAssetContent" {q}',
-    'intitle:"SiYuan" {q}',
-    # GHDB 2026 — paramètres SQLi (SecOps / DorkPlus)
+    'inurl:"/user/login?_format=json" intext:"SQL" {q}',
+    'inurl:"/jsonapi/node/" intext:"sql" {q}',
+    'inurl:option=com_acym intext:"sql" {q}',
+    'inurl:"index.php?option=com_acym" intext:"SQL" {q}',
+    # Paramètres SQL injectables
     "inurl:id= {q}",
     "inurl:pid= {q}",
-    "inurl:cat= {q}",
-    "inurl:category= {q}",
+    "inurl:cat= intext:sql {q}",
+    "inurl:category= intext:sql {q}",
     "inurl:sid= {q}",
-    "inurl:dir= {q}",
+    "inurl:sql.php?id= {q}",
     "inurl:index.php?id= {q}",
     "inurl:product.php?id= {q}",
     "inurl:article.php?id= {q}",
@@ -42,28 +29,50 @@ SQLI_CVE_2026_TEMPLATES = [
     "inurl:news.php?id= {q}",
     "inurl:category.php?id= {q}",
     "inurl:.php?id= {q}",
-    'inurl:".php?cat=" {q}',
+    'inurl:".php?cat=" intext:"SQL syntax" {q}',
     "allinurl:index.php?id= {q}",
-    # GHDB 2026 — error-based SQLi
+    "allinurl:product.php?id= {q}",
+    # Erreurs SQL (MySQL)
     'inurl:id= intext:"You have an error in your SQL syntax" {q}',
     'inurl:id= intext:"mysql_fetch_array()" {q}',
     'inurl:id= intext:"mysql_fetch_assoc()" {q}',
+    'inurl:id= intext:"mysql_num_rows()" {q}',
     'inurl:id= intext:"Warning: mysql_query()" {q}',
     'intext:"You have an error in your SQL syntax" {q}',
+    'intext:"mysql_fetch_array()" {q}',
+    'intext:"mysql_fetch_assoc()" {q}',
+    'intext:"mysql_query()" {q}',
+    'intext:"select * from" {q}',
+    'intext:"SQL syntax" {q}',
     'intext:"SQL syntax" intext:"error" {q}',
     'intext:"database error" {q}',
+    # Erreurs SQL (PostgreSQL / MSSQL / Oracle)
+    'intext:"PostgreSQL query failed" {q}',
+    'intext:"SQLSTATE" {q}',
     'intext:"ORA-00933" {q}',
     'intext:"Microsoft OLE DB Provider for SQL Server" {q}',
-    'intext:"Unclosed quotation mark" {q}',
-    # GHDB 2026 — combos
-    "filetype:php inurl:id= {q}",
+    'intext:"Unclosed quotation mark" intext:"SQL Server" {q}',
+    'intext:"Error Executing Database Query" {q}',
+    # Combos PHP + SQL
+    "filetype:php inurl:id= intext:sql {q}",
     'filetype:php intext:"mysql_fetch_array()" {q}',
+    'filetype:php intext:"You have an error in your SQL syntax" {q}',
     'inurl:.php?id= intext:"mysql" {q}',
+    'inurl:cat= intext:"SQL syntax" {q}',
+    'inurl:page= intext:"SQL syntax" {q}',
+    # Fichiers / dumps SQL
+    'filetype:sql "INSERT INTO" {q}',
     'filetype:sql "backup" {q}',
-    'filetype:env "DB_PASSWORD" {q}',
-    # SecOps 2026 — SQLi-prone params (condensé)
-    "inurl:id= inurl:cat= inurl:action= {q}",
+    'filetype:sql intext:"password" {q}',
+    'filetype:sql "dump" {q}',
+    'ext:sql inurl:backup {q}',
+    'ext:sql intext:"mysql" {q}',
+    'intitle:"index of" filetype:sql {q}',
+    'intext:"phpMyAdmin SQL Dump" {q}',
+    # SecOps 2026 — params + SQL errors
+    'inurl:id= inurl:cat= intext:"SQL syntax" {q}',
     'inurl:"error" intext:"SQL syntax" {q}',
+    'inurl:"error" intext:"database error" {q}',
 ]
 
 
@@ -95,7 +104,7 @@ def load_lines(path: Path) -> list[str]:
 
 
 def pick_template(keyword: str) -> str:
-    return SQLI_CVE_2026_TEMPLATES[hash(keyword) % len(SQLI_CVE_2026_TEMPLATES)]
+    return SQLI_SQL_TEMPLATES[hash(keyword) % len(SQLI_SQL_TEMPLATES)]
 
 
 def build_dork(keyword: str, domain: str | None = None) -> str:
@@ -117,8 +126,8 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Génère 1 Google dork SQLi par keyword (CVE 2026 + GHDB). "
-            "Lit un txt (1 keyword/ligne), écrit 1 dork/ligne."
+            "Génère 1 Google dork SQL par keyword. "
+            "Uniquement SQL : params, erreurs, dumps, CVE SQL 2026."
         )
     )
     parser.add_argument(
@@ -151,7 +160,7 @@ def run_generator(
     save_dorks(dorks, output_path)
 
     print(f"{len(keywords)} keywords -> {len(dorks)} dorks SQLi (1 par keyword)")
-    print(f"{len(SQLI_CVE_2026_TEMPLATES)} dorktypes CVE/GHDB 2026 en rotation")
+    print(f"{len(SQLI_SQL_TEMPLATES)} dorktypes SQL en rotation")
     if domain:
         print(f"Domaine : {domain}")
     print(f"Sauvegardé : {output_path}")
