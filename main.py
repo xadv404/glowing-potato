@@ -13,8 +13,7 @@ DEFAULT_DELAY = 0.2
 
 def load_keywords(path: Path) -> list[str]:
     if not path.exists():
-        print(f"Fichier introuvable : {path}", file=sys.stderr)
-        sys.exit(1)
+        raise FileNotFoundError(f"Fichier introuvable : {path}")
 
     keywords = []
     seen = set()
@@ -27,8 +26,7 @@ def load_keywords(path: Path) -> list[str]:
         keywords.append(kw)
 
     if not keywords:
-        print(f"Aucun keyword trouvé dans {path}", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f"Aucun keyword trouvé dans {path}")
 
     return keywords
 
@@ -125,18 +123,35 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def run_scraper(
+    input_path: Path,
+    output_path: Path | None = None,
+    lang: str = "fr",
+    delay: float = DEFAULT_DELAY,
+) -> tuple[int, Path]:
+    if output_path is None:
+        output_path = input_path.with_name(f"{input_path.stem}_keywords.txt")
+
+    input_keywords = load_keywords(input_path)
+    print(f"{len(input_keywords)} keywords chargés depuis {input_path}\n")
+
+    enriched = scrape_keywords(input_keywords, lang=lang, delay=delay)
+    save_keywords(enriched, output_path)
+
+    print(f"{len(enriched)} keywords sauvegardés dans {output_path}")
+    return len(enriched), output_path
+
+
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input)
     output_path = Path(args.output)
 
-    input_keywords = load_keywords(input_path)
-    print(f"{len(input_keywords)} keywords chargés depuis {input_path}\n")
-
-    enriched = scrape_keywords(input_keywords, lang=args.lang, delay=args.delay)
-    save_keywords(enriched, output_path)
-
-    print(f"{len(enriched)} keywords sauvegardés dans {output_path}")
+    try:
+        run_scraper(input_path, output_path, lang=args.lang, delay=args.delay)
+    except (FileNotFoundError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
