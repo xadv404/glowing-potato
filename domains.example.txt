@@ -1,0 +1,3 @@
+# Exemple de domaines (optionnel) — 1 par ligne
+# example.com
+# target.org

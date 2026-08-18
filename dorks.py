@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+# HQ Google dorks SQL — chaque keyword × tous les dorktypes
+# Curated: param + error combos (highest signal), CVE SQL 2026, GHDB/Box Piper 2026
+# Sources: DorkFinder, Box Piper 2026, SecOps-Google-Dork-Collection, CVE advisories
+# {q} = keyword
+
+SQLI_HQ_TEMPLATES = [
+    # ── Tier 1 : param + erreur SQL (meilleur signal) ──
+    'inurl:".php?id=" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?id= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"index.php?id=" intext:"Warning: mysql_num_rows()" {q}',
+    'inurl:index.php?id= intext:"mysql_fetch_array" {q}',
+    'inurl:"id=" intext:"MySQL Error: 1064" {q}',
+    'inurl:id= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:id= intext:"mysql_fetch_array()" {q}',
+    'inurl:id= intext:"mysql_fetch_assoc()" {q}',
+    'inurl:id= intext:"Warning: mysql_query()" {q}',
+    'inurl:".php?catid=" intext:"Warning: mysql_fetch_array()" {q}',
+    'inurl:"page.php?id=" intext:"mysql_num_rows()" {q}',
+    'inurl:product.php?id= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:article.php?id= intext:"mysql_fetch_assoc()" {q}',
+    'inurl:news.php?id= intext:"SQL syntax" {q}',
+    'inurl:category.php?id= intext:"SQL syntax" {q}',
+    'inurl:view.php?id= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:advsearch.php?module= intext:"sql syntax" {q}',
+    'allinurl:index.php?id= intext:"You have an error in your SQL syntax" {q}',
+    'filetype:php inurl:id= intext:"You have an error in your SQL syntax" {q}',
+    'filetype:php inurl:id= intext:"mysql_fetch_array()" {q}',
+    # ── Tier 1 : erreurs par SGBD ──
+    'inurl:.php?id= intext:"PostgreSQL query failed: ERROR" {q}',
+    'inurl:id= intext:"unterminated quoted string at or near" {q}',
+    'inurl:id= intext:"ORA-01756: quoted string not properly terminated" {q}',
+    'inurl:.php?id= intext:"ORA-00921: unexpected end of SQL command" {q}',
+    'inurl:id= intext:"Microsoft OLE DB Provider for SQL Server" {q}',
+    'inurl:id= intext:"Unclosed quotation mark" intext:"SQL Server" {q}',
+    'inurl:id= intext:"SQLSTATE" {q}',
+    'intext:"Error Executing Database Query." intext:"SQL" {q}',
+    'intext:"mysql_num_rows()" intext:"mysql_fetch_array()" intext:"mysql_query()" {q}',
+    'inurl:"error" intext:"SQL syntax" intext:"database error" {q}',
+    # ── Tier 2 : CVE SQL 2026 ──
+    'inurl:"/api/action/datastore_search_sql" {q}',
+    'inurl:"/user/login?_format=json" intext:"SQLSTATE" {q}',
+    'inurl:"/jsonapi/node/" intext:"SQL" {q}',
+    'inurl:"index.php?option=com_acym" intext:"sql" {q}',
+    # ── Tier 2 : pages PHP SQLi classiques (GHDB) ──
+    "inurl:index.php?id= {q}",
+    "inurl:product.php?id= {q}",
+    "inurl:article.php?id= {q}",
+    "inurl:trainers.php?id= {q}",
+    "inurl:buy.php?category= {q}",
+    "inurl:games.php?id= {q}",
+    "inurl:sql.php?id= {q}",
+    "inurl:page.php?file= {q}",
+    # ── Tier 3 : dumps / fichiers SQL exposés ──
+    'filetype:sql intext:"phpMyAdmin SQL Dump" {q}',
+    'filetype:sql "INSERT INTO" intext:"password" {q}',
+    'ext:sql inurl:backup intext:"CREATE TABLE" {q}',
+    'intitle:"index of" filetype:sql {q}',
+    # ── Tier 3 : SecOps 2026 — params SQLi condensés ──
+    'inurl:id= | inurl:cat= | inurl:page= intext:"SQL syntax" {q}',
+    'inurl:id= | inurl:pid= | inurl:category= intext:"database error" {q}',
+]
+
+# Alias pour la GUI
+SQLI_SQL_TEMPLATES = SQLI_HQ_TEMPLATES
+
+
+def quote_keyword(keyword: str) -> str:
+    keyword = keyword.strip()
+    if " " in keyword:
+        return f'"{keyword}"'
+    return keyword
+
+
+def load_lines(path: Path) -> list[str]:
+    if not path.exists():
+        raise FileNotFoundError(f"Fichier introuvable : {path}")
+
+    lines = []
+    seen = set()
+
+    for line in path.read_text(encoding="utf-8").splitlines():
+        value = line.strip().lower()
+        if not value or value.startswith("#") or value in seen:
+            continue
+        seen.add(value)
+        lines.append(value)
+
+    if not lines:
+        raise ValueError(f"Aucun keyword trouvé dans {path}")
+
+    return lines
+
+
+def build_dork(keyword: str, template: str, domain: str | None = None) -> str:
+    q = quote_keyword(keyword)
+    dork = template.format(q=q)
+    if domain:
+        return f"site:{domain} {dork}"
+    return dork
+
+
+def generate_dorks(keywords: list[str], domain: str | None = None) -> list[str]:
+    dorks: list[str] = []
+    for keyword in keywords:
+        for template in SQLI_HQ_TEMPLATES:
+            dorks.append(build_dork(keyword, template, domain))
+    return dorks
+
+
+def save_dorks(dorks: list[str], output_path: Path) -> None:
+    output_path.write_text("\n".join(dorks) + "\n", encoding="utf-8")
+
+
+def run_generator(
+    input_path: Path,
+    output_path: Path | None = None,
+    domain: str | None = None,
+) -> tuple[int, Path]:
+    if output_path is None:
+        stem = input_path.stem.removesuffix("_keywords")
+        output_path = input_path.with_name(f"{stem}_dorks.txt")
+
+    keywords = load_lines(input_path)
+    dorks = generate_dorks(keywords, domain=domain)
+    save_dorks(dorks, output_path)
+
+    template_count = len(SQLI_HQ_TEMPLATES)
+    print(
+        f"{len(keywords)} keywords × {template_count} dorktypes "
+        f"= {len(dorks)} dorks SQL HQ"
+    )
+    if domain:
+        print(f"Domaine : {domain}")
+    print(f"Sauvegardé : {output_path}")
+
+    return len(dorks), output_path
+
+
+if __name__ == "__main__":
+    from gui import main as gui_main
+
+    gui_main()
