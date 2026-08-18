@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import argparse
-import sys
 from pathlib import Path
 
 # HQ Google dorks SQL — 1 keyword = 1 dork
@@ -116,30 +114,6 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
     output_path.write_text("\n".join(dorks) + "\n", encoding="utf-8")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Génère 1 Google dork SQL HQ par keyword enrichi. "
-            "Utilise le fichier *_keywords.txt produit par le scraper."
-        )
-    )
-    parser.add_argument(
-        "input",
-        help="Fichier txt de keywords (1 par ligne, obligatoire)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        help="Fichier de sortie (défaut: {input}_sqli_dorks.txt)",
-    )
-    parser.add_argument(
-        "-d",
-        "--domain",
-        help="Domaine cible pour site: (ex: example.com)",
-    )
-    return parser.parse_args()
-
-
 def run_generator(
     input_path: Path,
     output_path: Path | None = None,
@@ -162,19 +136,7 @@ def run_generator(
     return len(dorks), output_path
 
 
-def main() -> None:
-    args = parse_args()
-
-    try:
-        run_generator(
-            input_path=Path(args.input),
-            output_path=Path(args.output) if args.output else None,
-            domain=args.domain,
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        print(exc, file=sys.stderr)
-        sys.exit(1)
-
-
 if __name__ == "__main__":
-    main()
+    from gui import main as gui_main
+
+    gui_main()

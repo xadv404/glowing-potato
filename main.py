@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import sys
 import time
 from dataclasses import dataclass, field
@@ -586,59 +585,6 @@ def save_keywords(keywords: set[str], output_path: Path) -> None:
     )
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Enrichit des keywords via Google + YouTube + Bing autocomplete, "
-            "modificateurs curés et scoring multi-source."
-        )
-    )
-    parser.add_argument(
-        "input",
-        nargs="?",
-        default="input.txt",
-        help="Fichier txt source avec les keywords à enrichir (défaut: input.txt)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        default="keywords.txt",
-        help="Fichier de sortie (défaut: keywords.txt)",
-    )
-    parser.add_argument(
-        "-l",
-        "--lang",
-        default="fr",
-        help="Langue autocomplete (défaut: fr)",
-    )
-    parser.add_argument(
-        "-d",
-        "--delay",
-        type=float,
-        default=DEFAULT_DELAY,
-        help="Délai entre chaque requête en secondes (défaut: 0.12)",
-    )
-    parser.add_argument(
-        "-s",
-        "--sources",
-        default="google,youtube,bing",
-        help="Sources séparées par virgule (défaut: google,youtube,bing)",
-    )
-    parser.add_argument(
-        "--preset",
-        choices=["strict", "balanced", "permissive", "volume"],
-        default=DEFAULT_PRESET_ID,
-        help=f"Preset qualité keywords (défaut: {DEFAULT_PRESET_ID})",
-    )
-    parser.add_argument(
-        "--min-score",
-        type=int,
-        default=None,
-        help="Score minimum (override le preset si défini)",
-    )
-    return parser.parse_args()
-
-
 def resolve_scraper_options(
     preset_id: str = DEFAULT_PRESET_ID,
     min_score: int | None = None,
@@ -690,26 +636,7 @@ def run_scraper(
     return len(enriched), output_path
 
 
-def main() -> None:
-    args = parse_args()
-    input_path = Path(args.input)
-    output_path = Path(args.output)
-    sources = tuple(s.strip() for s in args.sources.split(",") if s.strip())
-
-    try:
-        run_scraper(
-            input_path,
-            output_path,
-            lang=args.lang,
-            delay=args.delay,
-            sources=sources,
-            preset_id=args.preset,
-            min_score=args.min_score,
-        )
-    except (FileNotFoundError, ValueError) as exc:
-        print(exc, file=sys.stderr)
-        sys.exit(1)
-
-
 if __name__ == "__main__":
-    main()
+    from gui import main as gui_main
+
+    gui_main()

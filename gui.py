@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -289,12 +288,4 @@ def main(initial_mode: str = "pipeline") -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="GUI unifiée keywords + dorks")
-    parser.add_argument(
-        "--mode",
-        choices=list(MODES.keys()),
-        default="pipeline",
-        help="Mode initial (défaut: pipeline)",
-    )
-    args = parser.parse_args()
-    main(initial_mode=args.mode)
+    main()
