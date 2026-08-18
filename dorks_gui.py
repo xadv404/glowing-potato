@@ -26,11 +26,11 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             self,
-            text=f"{len(SQLI_SQL_TEMPLATES)} dorktypes SQL HQ — 1 keyword = 1 dork",
+            text="Étape 2 — fichier keywords enrichis (*_keywords.txt du scraper)",
             font=("Segoe UI", 9),
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12)
 
-        ttk.Label(self, text="Fichier keywords (.txt) — 1 keyword par ligne :").grid(
+        ttk.Label(self, text="Fichier keywords enrichis (.txt) :").grid(
             row=2, column=0, columnspan=2, sticky="w", **padding
         )
 
@@ -70,7 +70,7 @@ class DorkGeneratorApp(tk.Tk):
 
     def _select_keywords(self) -> None:
         file_path = filedialog.askopenfilename(
-            title="Sélectionner un fichier de keywords",
+            title="Sélectionner le fichier keywords enrichis",
             filetypes=[
                 ("Fichiers texte", "*.txt"),
                 ("Tous les fichiers", "*.*"),

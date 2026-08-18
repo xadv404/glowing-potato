@@ -119,8 +119,8 @@ def save_dorks(dorks: list[str], output_path: Path) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Génère 1 Google dork SQL HQ par keyword. "
-            "Combos param+erreur, CVE SQL 2026, GHDB curated."
+            "Génère 1 Google dork SQL HQ par keyword enrichi. "
+            "Utilise le fichier *_keywords.txt produit par le scraper."
         )
     )
     parser.add_argument(
@@ -146,7 +146,8 @@ def run_generator(
     domain: str | None = None,
 ) -> tuple[int, Path]:
     if output_path is None:
-        output_path = input_path.with_name(f"{input_path.stem}_sqli_dorks.txt")
+        stem = input_path.stem.removesuffix("_keywords")
+        output_path = input_path.with_name(f"{stem}_dorks.txt")
 
     keywords = load_lines(input_path)
     dorks = generate_dorks(keywords, domain=domain)
