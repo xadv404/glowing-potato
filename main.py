@@ -53,7 +53,7 @@ GENERIC_WORDS = frozenset({
 })
 
 AMBIGUOUS_WORDS = frozenset({
-    "vf", "ova", "hac", "iam", "rtm", "rcv", "rds", "tec", "ter", "tcl",
+    "vf", "ova", "canon", "filler", "hac", "iam", "rtm", "rcv", "rds", "tec", "ter", "tcl",
     "gsm", "psn", "ugc", "ubb", "zou", "voo", "wow", "arn", "apk", "logo", "kit",
     "gym", "hair", "immo", "moto", "auto", "autos", "golf", "cycle", "danse",
     "data", "dijon", "lyon", "nord", "fajr", "juif", "kids", "klm", "kiwi",
@@ -91,6 +91,35 @@ OFF_TOPIC_WORDS = frozenset({
     "nexus", "salt", "sama", "slayer", "wallpaper", "recap", "horizon",
 })
 
+# Jargon anime pollué seul dans l'autocomplete (canon=appareil photo, filler=médecine…).
+AMBIGUOUS_JARGON = frozenset({
+    "canon", "filler", "ending", "opening", "spinoff", "ova", "vf",
+    "reboot", "remaster", "binge-watching", "light-novel",
+})
+
+# Contexte anime/manga obligatoire si jargon ambigu présent sans seed multi-mot contextualisé.
+ANIME_CONTEXT_WORDS = frozenset({
+    "anime", "manga", "vostfr", "isekai", "shonen", "seinen", "mecha",
+    "yaoi", "yuri", "scantrad", "fansub", "simulcast", "webtoon", "doujin",
+    "アニメ", "マンガ", "动漫", "动画", "動漫", "動畫", "аниме", "манга",
+})
+
+# Mots seuls trop génériques / pollués pour être retenus sans autre ancrage.
+WEAK_STANDALONE_WORDS = AMBIGUOUS_JARGON | frozenset({
+    "fansub", "scantrad", "simulcast", "doujin", "tankobon", "otaku", "webtoon",
+    "gore", "ecchi", "harem", "streaming",
+})
+
+# Pollution domaines hors anime (photo, médical, tech, jeux…).
+POLLUTION_WORDS = frozenset({
+    "camera", "imprimante", "printer", "printers", "pixma", "powershot", "scanner",
+    "scanners", "argentique", "dermal", "abdominal", "docteur", "medical", "medecin",
+    "gamefaqs", "pubg", "subscription", "subscriptions", "drivers", "driver",
+    "utilities", "testament", "simulation", "definition", "office", "scandal",
+    "game", "games", "body", "chin", "parallel", "broken", "adnan", "adnil",
+    "comedy", "computer", "community", "catalog", "collection", "subscription",
+})
+
 PLATFORM_WORDS = frozenset({
     "adn", "crunchyroll", "wakanim", "funimation", "hidive", "netflix",
 })
@@ -104,7 +133,7 @@ CORE_THEME_ANCHORS = frozenset({
     "hidive", "fansub", "scantrad", "doujin", "kawaii", "chibi", "harem", "ecchi",
     "mangaka", "seiyu", "figurine", "goodies", "poster", "artbook", "peluche",
     "sticker", "coffret", "netflix", "kyoani", "ghibli", "mappa", "ufotable", "madhouse",
-    "trigger", "bones", "toei", "opening", "ending", "tankobon", "light", "novel",
+    "trigger", "bones", "toei", "tankobon", "light", "novel",
     "アニメ", "マンガ", "漫画", "애니", "애니메", "만화", "动漫", "动画", "動漫", "動畫",
     "аниме", "манга",
 })
@@ -159,6 +188,45 @@ def is_platform_prefix_false_positive(word: str) -> bool:
     return False
 
 
+def seed_has_anime_context(seed: str, lang: str = DEFAULT_LANG) -> bool:
+    words = set(normalize_keyword(seed, lang).replace("-", " ").split())
+    return bool(words & ANIME_CONTEXT_WORDS)
+
+
+def keyword_has_anime_context(keyword: str) -> bool:
+    words = set(keyword.replace("-", " ").split())
+    return bool(words & ANIME_CONTEXT_WORDS)
+
+
+def contains_ambiguous_jargon(keyword: str) -> bool:
+    words = set(keyword.replace("-", " ").split())
+    return bool(words & AMBIGUOUS_JARGON)
+
+
+def is_ambiguous_jargon_only_seed(seed: str, lang: str = DEFAULT_LANG) -> bool:
+    words = normalize_keyword(seed, lang).replace("-", " ").split()
+    specific = seed_specific_words(seed, lang)
+    return len(words) == 1 and len(specific) == 1 and specific[0] in AMBIGUOUS_JARGON
+
+
+def has_pollution(keyword: str) -> bool:
+    words = keyword.replace("-", " ").split()
+    for w in words:
+        wl = w.lower()
+        if wl in POLLUTION_WORDS:
+            return True
+        if wl in OFF_TOPIC_WORDS:
+            return True
+    return False
+
+
+def requires_explicit_anime_context(keyword: str, seed: str, lang: str = DEFAULT_LANG) -> bool:
+    """Jargon ambigu sans contexte anime dans le seed → exiger anime/manga dans le keyword."""
+    if not contains_ambiguous_jargon(keyword):
+        return False
+    return not seed_has_anime_context(seed, lang)
+
+
 def build_theme_vocab(seeds: list[str], lang: str = DEFAULT_LANG) -> set[str]:
     vocab: set[str] = set()
     for seed in seeds:
@@ -203,12 +271,16 @@ def seed_specific_words(seed: str, lang: str = DEFAULT_LANG) -> list[str]:
 
 
 def should_expand(seed: str, lang: str = DEFAULT_LANG) -> bool:
+    if is_ambiguous_jargon_only_seed(seed, lang):
+        return False
     specific = seed_specific_words(seed, lang)
     if not specific:
         return False
     if len(specific) >= 2:
         return True
     min_len = 2 if is_cjk_lang(lang) else 4
+    if specific[0] in AMBIGUOUS_JARGON:
+        return False
     return len(specific[0]) >= min_len
 
 
@@ -259,7 +331,19 @@ def has_off_topic_tail(
         return False
 
     tail = words[1:]
-    blocked = OFF_TOPIC_WORDS | AMBIGUOUS_WORDS
+
+    if keyword_has_anime_context(keyword):
+        for w in tail:
+            wl = w.lower()
+            if wl in POLLUTION_WORDS or wl in OFF_TOPIC_WORDS:
+                return True
+            if profile.block_english_pollution and (
+                wl in ENGLISH_NOISE or wl in ENGLISH_TAIL_WORDS
+            ):
+                return True
+        return False
+
+    blocked = OFF_TOPIC_WORDS | AMBIGUOUS_WORDS | POLLUTION_WORDS
     if profile.block_english_pollution:
         blocked = blocked | ENGLISH_NOISE | ENGLISH_TAIL_WORDS
 
@@ -267,13 +351,14 @@ def has_off_topic_tail(
         return True
 
     for w in tail:
+        if w.lower() in AMBIGUOUS_JARGON:
+            return True
         if is_acceptable_word(w, theme_vocab, theme_anchors, profile):
             continue
         if has_cjk_chars(w):
             continue
         if len(w) <= 3:
             return True
-        # Mot long sans marqueur natif ni ancrage thème → probablement hors-langue.
         if len(w) >= 4 and not has_native_marker(w, profile):
             if profile.block_english_pollution:
                 return True
@@ -385,6 +470,12 @@ def is_valid_keyword(
     if any(is_platform_prefix_false_positive(w) for w in words):
         return False
 
+    if has_pollution(keyword):
+        return False
+
+    if requires_explicit_anime_context(keyword, seed, lang) and not keyword_has_anime_context(keyword):
+        return False
+
     min_tail = 1 if is_cjk_lang(lang) else 2
     if len(words[-1]) <= min_tail and keyword not in direct:
         return False
@@ -398,8 +489,10 @@ def is_valid_keyword(
             keyword, theme_vocab, theme_anchors, lang
         ):
             return False
-        if len(words) == 1 and words[0] not in theme_anchors and words[0] not in CORE_THEME_ANCHORS:
+        if len(words) == 1:
             wl = words[0].lower() if not has_cjk_chars(words[0]) else words[0]
+            if wl in WEAK_STANDALONE_WORDS:
+                return False
             if wl not in theme_anchors and wl not in CORE_THEME_ANCHORS:
                 return False
 
