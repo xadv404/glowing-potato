@@ -72,6 +72,19 @@ QUALITY_PRESETS: dict[str, QualityPreset] = {
 DEFAULT_PRESET_ID = "balanced"
 DEFAULT_LANG = "fr"
 
+
+class UnsupportedLanguageError(ValueError):
+    """Langue hl non maîtrisée — pas de fallback."""
+
+    def __init__(self, lang: str) -> None:
+        self.lang = lang
+        codes = ", ".join(profile.code for profile in LANGUAGE_PROFILES.values())
+        super().__init__(
+            f"Langue « {lang} » non maîtrisée.\n"
+            f"Nous ne disposons pas de filtrage ni de modificateurs pour cette langue.\n"
+            f"Langues supportées : {codes}"
+        )
+
 # Alias compat
 SCORE_PRESETS = QUALITY_PRESETS
 
@@ -421,12 +434,15 @@ def normalize_lang(code: str) -> str:
     return normalized
 
 
+def is_supported_lang(lang: str) -> bool:
+    return normalize_lang(lang) in LANGUAGE_PROFILES
+
+
 def get_lang_profile(lang: str) -> LanguageProfile:
     key = normalize_lang(lang)
     if key in LANGUAGE_PROFILES:
         return LANGUAGE_PROFILES[key]
-    # Langue non listée : profil EN permissif + modificateurs EN
-    return LANGUAGE_PROFILES["en"]
+    raise UnsupportedLanguageError(lang.strip())
 
 
 def get_google_hl(lang: str) -> str:

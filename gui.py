@@ -9,6 +9,7 @@ from config import (
     DEFAULT_PRESET_ID,
     LANGUAGE_OPTIONS,
     QUALITY_PRESETS,
+    UnsupportedLanguageError,
     get_lang_profile,
     get_preset,
     normalize_lang,
@@ -108,7 +109,7 @@ class ToolkitApp(tk.Tk):
         self.lang_combo.grid(row=7, column=0, columnspan=2, sticky="w", pady=2)
         ttk.Label(
             self.kw_frame,
-            text="Codes hl Google : fr, en, es, de, ja, zh-CN… (saisie libre)",
+            text="Variantes régionales acceptées (en-US, pt-BR, zh-TW…). Autre langue → refus.",
             wraplength=420,
             font=("Segoe UI", 8),
             foreground="#555",
@@ -184,11 +185,24 @@ class ToolkitApp(tk.Tk):
     def _current_preset_id(self) -> str:
         return self._current_preset().id
 
-    def _current_lang(self) -> str:
+    def _current_lang_raw(self) -> str:
         raw = self.lang_var.get().strip()
         if " — " in raw:
-            return normalize_lang(raw.split(" — ", 1)[0])
-        return normalize_lang(raw)
+            return raw.split(" — ", 1)[0].strip()
+        return raw
+
+    def _current_lang(self) -> str:
+        return normalize_lang(self._current_lang_raw())
+
+    def _validate_lang(self) -> str | None:
+        raw = self._current_lang_raw()
+        if not raw:
+            return "Indique une langue (code hl Google)."
+        try:
+            get_lang_profile(raw)
+        except UnsupportedLanguageError as exc:
+            return str(exc)
+        return None
 
     def _select_seeds(self) -> None:
         path = filedialog.askopenfilename(
@@ -231,6 +245,12 @@ class ToolkitApp(tk.Tk):
         if mode == "dorks" and self.keywords_file is None:
             messagebox.showwarning("Attention", "Sélectionne un fichier keywords enrichis.")
             return
+
+        if mode in ("pipeline", "keywords"):
+            lang_error = self._validate_lang()
+            if lang_error:
+                messagebox.showwarning("Langue non maîtrisée", lang_error)
+                return
 
         self.start_button.config(state="disabled")
         self.status_label.config(text="En cours...")
@@ -275,7 +295,7 @@ class ToolkitApp(tk.Tk):
                     self.keywords_file, domain=domain
                 )
 
-        except (FileNotFoundError, ValueError) as exc:
+        except (FileNotFoundError, ValueError, UnsupportedLanguageError) as exc:
             self.after(0, lambda: self._on_error(str(exc)))
             return
         except Exception as exc:
