@@ -4,7 +4,15 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from config import DEFAULT_PRESET_ID, QUALITY_PRESETS, get_preset
+from config import (
+    DEFAULT_LANG,
+    DEFAULT_PRESET_ID,
+    LANGUAGE_OPTIONS,
+    QUALITY_PRESETS,
+    get_lang_profile,
+    get_preset,
+    normalize_lang,
+)
 from dorks import run_generator as run_dork_generator
 from main import run_scraper
 
@@ -81,6 +89,31 @@ class ToolkitApp(tk.Tk):
         )
         self.preset_desc.grid(row=5, column=0, columnspan=2, sticky="w")
 
+        ttk.Label(self.kw_frame, text="Langue (Google hl) :").grid(
+            row=6, column=0, sticky="w", pady=(8, 0)
+        )
+        lang_labels = [f"{code} — {label}" for code, label in LANGUAGE_OPTIONS]
+        self.lang_var = tk.StringVar(
+            value=next(
+                (f"{code} — {label}" for code, label in LANGUAGE_OPTIONS if code == DEFAULT_LANG),
+                lang_labels[0],
+            )
+        )
+        self.lang_combo = ttk.Combobox(
+            self.kw_frame,
+            textvariable=self.lang_var,
+            values=lang_labels,
+            width=42,
+        )
+        self.lang_combo.grid(row=7, column=0, columnspan=2, sticky="w", pady=2)
+        ttk.Label(
+            self.kw_frame,
+            text="Codes hl Google : fr, en, es, de, ja, zh-CN… (saisie libre)",
+            wraplength=420,
+            font=("Segoe UI", 8),
+            foreground="#555",
+        ).grid(row=8, column=0, columnspan=2, sticky="w")
+
         # --- Dorks section ---
         self.dork_frame = ttk.LabelFrame(self, text="Dorks SQL", padding=8)
         self.dork_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
@@ -151,6 +184,12 @@ class ToolkitApp(tk.Tk):
     def _current_preset_id(self) -> str:
         return self._current_preset().id
 
+    def _current_lang(self) -> str:
+        raw = self.lang_var.get().strip()
+        if " — " in raw:
+            return normalize_lang(raw.split(" — ", 1)[0])
+        return normalize_lang(raw)
+
     def _select_seeds(self) -> None:
         path = filedialog.askopenfilename(
             title="Fichier seeds (1 keyword par ligne)",
@@ -216,9 +255,11 @@ class ToolkitApp(tk.Tk):
                         text=f"Scraping ({get_preset(preset_id).label})..."
                     ),
                 )
+                lang = self._current_lang()
                 kw_count, enriched_path = run_scraper(
                     self.seeds_file,
                     preset_id=preset_id,
+                    lang=lang,
                 )
 
             if mode == "pipeline":
@@ -267,9 +308,11 @@ class ToolkitApp(tk.Tk):
                 f"{kw_count} × {tpl} dorktypes = {dork_count} dorks SQL :\n{dorks_path}",
             )
         elif mode == "keywords":
+            profile = get_lang_profile(self._current_lang())
             messagebox.showinfo(
                 "Terminé",
-                f"Preset : {self._current_preset().label}\n\n"
+                f"Preset : {self._current_preset().label}\n"
+                f"Langue : {profile.label}\n\n"
                 f"{kw_count} keywords enrichis :\n{enriched_path}",
             )
         else:

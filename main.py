@@ -5,7 +5,16 @@ from pathlib import Path
 
 import requests
 
-from config import DEFAULT_PRESET_ID, QualityPreset, get_preset
+from config import (
+    CASELESS_LANGS,
+    DEFAULT_LANG,
+    DEFAULT_PRESET_ID,
+    LanguageProfile,
+    get_google_hl,
+    get_lang_profile,
+    get_preset,
+    normalize_lang,
+)
 
 AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
 DEFAULT_DELAY = 0.12
@@ -14,14 +23,6 @@ MAX_WORDS = 3
 MAX_PER_PREFIX = 3
 MAX_PER_ROOT = 2
 MAX_PER_SEED = 25
-
-CURATED_MODIFIERS = [
-    "gratuit", "vostfr", "vf", "streaming", "legal", "complet", "voir", "regarder",
-    "site", "liste", "top", "meilleur", "forum", "avis", "prix", "guide",
-    "saison", "episode", "film", "nouveau", "populaire", "culte",
-    "netflix", "crunchyroll", "adn", "wakanim", "figurine", "cosplay",
-    "opening", "scan", "france", "francais", "telecharger", "sans", "pub",
-]
 
 GENERIC_WORDS = frozenset({
     "abonnement", "streaming", "catalogue", "application", "plateforme",
@@ -45,6 +46,10 @@ GENERIC_WORDS = frozenset({
     "qualité", "qualite", "disponible", "france", "belgique", "légal", "offre",
     "offres", "comparer", "comparaison", "test", "forum", "avis", "reduction",
     "réduction", "promo", "code", "coupon", "gratuitement", "illimité", "pub",
+    # EN / autres langues
+    "watch", "stream", "online", "download", "best", "list", "review", "price",
+    "season", "episode", "movie", "series", "complete", "popular", "new", "full",
+    "gratis", "ver", "kostenlos", "kijken", "vedere", "izle", "ucretsiz", "ücretsiz",
 })
 
 AMBIGUOUS_WORDS = frozenset({
@@ -56,8 +61,9 @@ AMBIGUOUS_WORDS = frozenset({
     "hbo", "psg", "vin", "zoo", "asse", "jims", "hac", "med", "rca", "ubb",
 })
 
+# Pollution EN quand hl ≠ en
 ENGLISH_NOISE = frozenset({
-    "about", "american", "legit", "ape", "ark", "adventures", "figures", "meme",
+    "about", "american", "legit", "ape", "ark", "figures", "meme",
     "tab", "girl", "boy", "zone", "queen", "line", "skeleton", "triggers",
     "paranormal", "psycho", "asylum", "bones", "law", "nintendo", "supernatural",
     "survival", "buu", "dio", "ian", "jio", "tab", "legit", "arab", "nickelodeon",
@@ -66,7 +72,6 @@ ENGLISH_NOISE = frozenset({
     "platform", "application", "calendar", "community", "convention", "catalog",
 })
 
-# Mots EN fréquents dans l'autocomplete Google (hl=fr).
 ENGLISH_TAIL_WORDS = frozenset({
     "adventure", "comedy", "popular", "complete", "series", "cultural", "impact",
     "influence", "references", "catalogs", "service", "collection", "videos",
@@ -80,36 +85,11 @@ ENGLISH_TAIL_WORDS = frozenset({
     "dungeons", "expeditions", "apocalypse", "skeleton", "triggers", "school",
 })
 
-# Bruit hors-thème : jeux, typos, noms propres parasites.
 OFF_TOPIC_WORDS = frozenset({
     "codes", "code", "guideau", "guideverse", "maiwenn", "plattform", "filme",
     "completo", "stremio", "expeditions", "dramedy", "guidelines", "puberty",
     "nexus", "salt", "sama", "slayer", "wallpaper", "recap", "horizon",
 })
-
-# Termes FR / niche anime explicitement acceptés en queue de keyword.
-FRENCH_ANIME_WORDS = frozenset({
-    "action", "combat", "aventure", "aventureux", "romance", "romantique", "horreur",
-    "comédie", "comedie", "drame", "dramatique", "fantasy", "magie", "surnaturel",
-    "cyberpunk", "ecchi", "harem", "isekai", "shonen", "seinen", "mecha", "vostfr",
-    "manga", "anime", "figurine", "cosplay", "opening", "scan", "scantrad", "fansub",
-    "crunchyroll", "wakanim", "netflix", "otaku", "kawaii", "chibi", "yaoi", "yuri",
-    "japonais", "japonesa", "chinois", "francais", "français", "gratuit", "complet",
-    "streaming", "legal", "légal", "populaire", "culte", "nouveau", "nouveauté",
-    "liste", "saison", "episode", "épisode", "film", "films", "serie", "série",
-    "regarder", "voir", "site", "forum", "avis", "prix", "guide", "top", "meilleur",
-    "scolaire", "edgerunners", "kyoani", "ufotable", "mappa", "ghibli", "toei",
-    "bones", "trigger", "madhouse", "costume", "collector", "peluche", "poster",
-    "goodies", "artbook", "coffret", "sticker", "doujin", "webtoon", "simulcast",
-    "tankobon", "mangaka", "seiyu", "abonnement", "catalogue", "plateforme",
-})
-
-FRENCH_SUFFIXES = (
-    "tion", "sion", "ment", "eux", "euse", "eur", "ais", "ois", "ant", "ent",
-    "age", "ique", "able", "elle", "ette", "aux", "eau",
-)
-
-ACCENT_CHARS = frozenset("àâäéèêëïîôùûüç")
 
 PLATFORM_WORDS = frozenset({
     "adn", "crunchyroll", "wakanim", "funimation", "hidive", "netflix",
@@ -121,8 +101,9 @@ CORE_THEME_ANCHORS = frozenset({
     "hidive", "fansub", "scantrad", "doujin", "kawaii", "chibi", "harem", "ecchi",
     "mangaka", "seiyu", "figurine", "goodies", "poster", "artbook", "peluche",
     "sticker", "coffret", "netflix", "kyoani", "ghibli", "mappa", "ufotable", "madhouse",
-    "trigger", "bones", "toei", "opening", "ending", "tankobon", "doujin", "otaku",
-    "light", "novel", "webtoon", "simulcast", "scantrad", "wakanim", "funimation",
+    "trigger", "bones", "toei", "opening", "ending", "tankobon", "light", "novel",
+    "アニメ", "マンガ", "漫画", "애니", "애니메", "만화", "动漫", "动画", "動漫", "動畫",
+    "аниме", "манга",
 })
 
 BROAD_THEME_WORDS = frozenset({
@@ -135,81 +116,119 @@ BROAD_THEME_WORDS = frozenset({
     "application", "plateforme", "catalogue", "calendrier", "classement", "critique",
     "guide", "liste", "avis", "prix", "gratuit", "legal", "légal", "complet",
     "recent", "récent", "populaire", "tendance", "culte", "nouveau", "meilleur",
+    "comedy", "horror", "drama", "watch", "stream", "online", "free", "complete",
 })
 
+CJK_RANGES = (
+    (0x3040, 0x30FF),  # Hiragana + Katakana
+    (0x4E00, 0x9FFF),  # CJK Unified
+    (0xAC00, 0xD7AF),  # Hangul
+)
 
-def build_theme_vocab(seeds: list[str]) -> set[str]:
+
+def is_cjk_lang(lang: str) -> bool:
+    return normalize_lang(lang) in CASELESS_LANGS or normalize_lang(lang).startswith("zh")
+
+
+def normalize_keyword(text: str, lang: str) -> str:
+    if is_cjk_lang(lang):
+        return text.strip()
+    return text.strip().lower()
+
+
+def has_cjk_chars(text: str) -> bool:
+    for char in text:
+        code = ord(char)
+        for start, end in CJK_RANGES:
+            if start <= code <= end:
+                return True
+    return False
+
+
+def build_theme_vocab(seeds: list[str], lang: str = DEFAULT_LANG) -> set[str]:
     vocab: set[str] = set()
     for seed in seeds:
-        for word in seed.replace("-", " ").split():
-            w = word.lower()
+        normalized = normalize_keyword(seed, lang)
+        for word in normalized.replace("-", " ").split():
+            w = word.lower() if not is_cjk_lang(lang) else word
             if w in GENERIC_WORDS or w in AMBIGUOUS_WORDS:
                 continue
-            if len(w) >= 3:
+            if len(w) >= 2 if is_cjk_lang(lang) else len(w) >= 3:
                 vocab.add(w)
     return vocab
 
 
-def build_theme_anchors(seeds: list[str]) -> set[str]:
+def build_theme_anchors(seeds: list[str], lang: str = DEFAULT_LANG) -> set[str]:
     anchors = set(CORE_THEME_ANCHORS)
     for seed in seeds:
-        words = seed.replace("-", " ").split()
-        if not ({"anime", "manga"} & set(words)):
+        normalized = normalize_keyword(seed, lang)
+        words = normalized.replace("-", " ").split()
+        word_set = {w.lower() if not is_cjk_lang(lang) else w for w in words}
+        if not ({"anime", "manga", "アニメ", "マンガ", "애니", "动漫", "動漫"} & word_set):
             continue
         for w in words:
-            wl = w.lower()
+            wl = w.lower() if not is_cjk_lang(lang) else w
             if wl in GENERIC_WORDS or wl in AMBIGUOUS_WORDS or wl in BROAD_THEME_WORDS:
                 continue
-            if wl in {"anime", "manga"}:
+            if wl in {"anime", "manga", "アニメ", "マンガ", "애니", "动漫", "動漫"}:
                 continue
-            if len(wl) >= 6:
+            min_len = 2 if is_cjk_lang(lang) else 6
+            if len(wl) >= min_len:
                 anchors.add(wl)
     return anchors
 
 
-def seed_specific_words(seed: str) -> list[str]:
+def seed_specific_words(seed: str, lang: str = DEFAULT_LANG) -> list[str]:
+    normalized = normalize_keyword(seed, lang)
     return [
-        w for w in seed.split()
+        w for w in normalized.split()
         if w not in GENERIC_WORDS
         and w not in AMBIGUOUS_WORDS
         and w not in BROAD_THEME_WORDS
     ]
 
 
-def should_expand(seed: str) -> bool:
-    specific = seed_specific_words(seed)
+def should_expand(seed: str, lang: str = DEFAULT_LANG) -> bool:
+    specific = seed_specific_words(seed, lang)
     if not specific:
         return False
     if len(specific) >= 2:
         return True
-    return len(specific[0]) >= 4
+    min_len = 2 if is_cjk_lang(lang) else 4
+    return len(specific[0]) >= min_len
 
 
-def modifiers_for_seed(seed: str) -> list[str]:
-    seed_words = set(seed.split())
-    return [mod for mod in CURATED_MODIFIERS if mod not in seed_words]
+def modifiers_for_seed(seed: str, lang: str = DEFAULT_LANG) -> list[str]:
+    profile = get_lang_profile(lang)
+    seed_words = set(normalize_keyword(seed, lang).split())
+    return [mod for mod in profile.modifiers if mod not in seed_words]
 
 
-def has_french_marker(word: str) -> bool:
-    if any(c in word for c in ACCENT_CHARS):
+def has_native_marker(word: str, profile: LanguageProfile) -> bool:
+    if has_cjk_chars(word):
         return True
-    return any(word.endswith(suffix) for suffix in FRENCH_SUFFIXES)
+    if profile.native_chars and any(c in word for c in profile.native_chars):
+        return True
+    if profile.native_suffixes:
+        wl = word.lower()
+        return any(wl.endswith(suffix) for suffix in profile.native_suffixes)
+    return False
 
 
 def is_acceptable_word(
     word: str,
     theme_vocab: set[str],
     theme_anchors: set[str],
+    profile: LanguageProfile,
 ) -> bool:
-    if word in theme_anchors or word in CORE_THEME_ANCHORS:
+    wl = word.lower() if not has_cjk_chars(word) else word
+    if wl in theme_anchors or wl in CORE_THEME_ANCHORS:
         return True
-    if word in FRENCH_ANIME_WORDS:
+    if wl in profile.acceptable_words:
         return True
-    if word in theme_vocab and word not in BROAD_THEME_WORDS:
+    if wl in theme_vocab and wl not in BROAD_THEME_WORDS:
         return True
-    if word in BROAD_THEME_WORDS and word in FRENCH_ANIME_WORDS:
-        return True
-    if has_french_marker(word) and len(word) >= 4:
+    if has_native_marker(word, profile) and len(word) >= 3:
         return True
     return False
 
@@ -217,7 +236,8 @@ def is_acceptable_word(
 def has_off_topic_tail(
     keyword: str,
     theme_vocab: set[str],
-    theme_anchors: set[str] | None = None,
+    theme_anchors: set[str] | None,
+    profile: LanguageProfile,
 ) -> bool:
     theme_anchors = theme_anchors or set()
     words = keyword.split()
@@ -225,18 +245,24 @@ def has_off_topic_tail(
         return False
 
     tail = words[1:]
-    blocked = ENGLISH_NOISE | ENGLISH_TAIL_WORDS | OFF_TOPIC_WORDS | AMBIGUOUS_WORDS
-    if any(w in blocked for w in tail):
+    blocked = OFF_TOPIC_WORDS | AMBIGUOUS_WORDS
+    if profile.block_english_pollution:
+        blocked = blocked | ENGLISH_NOISE | ENGLISH_TAIL_WORDS
+
+    if any(w in blocked or w.lower() in blocked for w in tail):
         return True
 
     for w in tail:
-        if is_acceptable_word(w, theme_vocab, theme_anchors):
+        if is_acceptable_word(w, theme_vocab, theme_anchors, profile):
+            continue
+        if has_cjk_chars(w):
             continue
         if len(w) <= 3:
             return True
-        # Mot long sans marqueur FR ni ancrage thème → probablement EN / hors-thème.
-        if len(w) >= 4 and not has_french_marker(w):
-            return True
+        # Mot long sans marqueur natif ni ancrage thème → probablement hors-langue.
+        if len(w) >= 4 and not has_native_marker(w, profile):
+            if profile.block_english_pollution:
+                return True
 
     return False
 
@@ -245,6 +271,7 @@ def keyword_has_theme_anchor(
     keyword: str,
     theme_vocab: set[str],
     theme_anchors: set[str],
+    lang: str = DEFAULT_LANG,
 ) -> bool:
     words = set(keyword.split())
     if words & theme_anchors:
@@ -253,6 +280,8 @@ def keyword_has_theme_anchor(
         w for w in words
         if w in theme_vocab and w not in GENERIC_WORDS and w not in BROAD_THEME_WORDS
     }
+    if is_cjk_lang(lang) and len(specific) >= 1:
+        return True
     return len(specific) >= 1
 
 
@@ -261,35 +290,43 @@ def is_on_theme(
     seed: str,
     theme_vocab: set[str],
     theme_anchors: set[str],
+    profile: LanguageProfile,
     direct: set[str] | None = None,
+    lang: str = DEFAULT_LANG,
 ) -> bool:
     direct = direct or set()
     words = keyword.split()
-    seed_words = set(seed.split())
+    seed_words = set(normalize_keyword(seed, lang).split())
     word_set = set(words)
 
     if not seed_words.intersection(word_set):
-        return False
+        # Pour CJK : comparer aussi en minuscules si seed latin
+        if not is_cjk_lang(lang):
+            return False
+        seed_lower = {w.lower() for w in seed_words}
+        word_lower = {w.lower() for w in word_set}
+        if not seed_lower.intersection(word_lower):
+            return False
 
     anchor_in_keyword = word_set & theme_anchors
-    specific_seed = seed_specific_words(seed)
+    specific_seed = seed_specific_words(seed, lang)
 
     platform_in_seed = seed_words & PLATFORM_WORDS
     if platform_in_seed and len(seed_words) >= 2:
         if platform_in_seed.intersection(words) and seed_words.issubset(words):
-            if not has_off_topic_tail(keyword, theme_vocab, theme_anchors):
+            if not has_off_topic_tail(keyword, theme_vocab, theme_anchors, profile):
                 return True
 
     if len(specific_seed) >= 2:
         if not all(w in words for w in specific_seed):
             return False
-        return not has_off_topic_tail(keyword, theme_vocab, theme_anchors)
+        return not has_off_topic_tail(keyword, theme_vocab, theme_anchors, profile)
 
     if len(specific_seed) == 1:
         anchor = specific_seed[0]
         if anchor not in words:
             return False
-        if has_off_topic_tail(keyword, theme_vocab, theme_anchors):
+        if has_off_topic_tail(keyword, theme_vocab, theme_anchors, profile):
             return False
         return True
 
@@ -300,7 +337,7 @@ def is_on_theme(
         return True
 
     return bool(anchor_in_keyword) and not has_off_topic_tail(
-        keyword, theme_vocab, theme_anchors
+        keyword, theme_vocab, theme_anchors, profile
     )
 
 
@@ -310,11 +347,14 @@ def is_valid_keyword(
     theme_vocab: set[str] | None = None,
     theme_anchors: set[str] | None = None,
     direct: set[str] | None = None,
+    profile: LanguageProfile | None = None,
+    lang: str = DEFAULT_LANG,
 ) -> bool:
     words = keyword.split()
     direct = direct or set()
     theme_vocab = theme_vocab or set()
     theme_anchors = theme_anchors or set()
+    profile = profile or get_lang_profile(lang)
 
     if not (MIN_WORDS <= len(words) <= MAX_WORDS):
         return False
@@ -328,17 +368,23 @@ def is_valid_keyword(
     if len(words) != len(set(words)):
         return False
 
-    if len(words[-1]) <= 2 and keyword not in direct:
+    min_tail = 1 if is_cjk_lang(lang) else 2
+    if len(words[-1]) <= min_tail and keyword not in direct:
         return False
 
     if seed and theme_vocab is not None:
-        if not is_on_theme(keyword, seed, theme_vocab, theme_anchors, direct):
+        if not is_on_theme(
+            keyword, seed, theme_vocab, theme_anchors, profile, direct, lang
+        ):
             return False
-        if len(words) >= 2 and not keyword_has_theme_anchor(keyword, theme_vocab, theme_anchors):
+        if len(words) >= 2 and not keyword_has_theme_anchor(
+            keyword, theme_vocab, theme_anchors, lang
+        ):
             return False
-        # Mots seuls : uniquement ancres forte identité (pas "streaming", "adn"...).
         if len(words) == 1 and words[0] not in theme_anchors and words[0] not in CORE_THEME_ANCHORS:
-            return False
+            wl = words[0].lower() if not has_cjk_chars(words[0]) else words[0]
+            if wl not in theme_anchors and wl not in CORE_THEME_ANCHORS:
+                return False
 
     return True
 
@@ -430,6 +476,8 @@ def filter_keywords(
     theme_vocab: set[str],
     theme_anchors: set[str],
     direct: set[str],
+    profile: LanguageProfile,
+    lang: str = DEFAULT_LANG,
     max_per_seed: int = MAX_PER_SEED,
     max_per_prefix: int = MAX_PER_PREFIX,
 ) -> set[str]:
@@ -441,6 +489,8 @@ def filter_keywords(
             theme_vocab=theme_vocab,
             theme_anchors=theme_anchors,
             direct=direct,
+            profile=profile,
+            lang=lang,
         )
     }
     deduped = dedupe_repetitive(valid, direct=direct, max_per_prefix=max_per_prefix)
@@ -460,7 +510,7 @@ def filter_keywords(
     return set(ranked[:max_per_seed])
 
 
-def load_keywords(path: Path) -> list[str]:
+def load_keywords(path: Path, lang: str = DEFAULT_LANG) -> list[str]:
     if not path.exists():
         raise FileNotFoundError(f"Fichier introuvable : {path}")
 
@@ -468,7 +518,7 @@ def load_keywords(path: Path) -> list[str]:
     seen = set()
 
     for line in path.read_text(encoding="utf-8").splitlines():
-        kw = line.strip().lower()
+        kw = normalize_keyword(line, lang)
         if not kw or kw.startswith("#") or kw in seen:
             continue
         seen.add(kw)
@@ -480,8 +530,9 @@ def load_keywords(path: Path) -> list[str]:
     return keywords
 
 
-def fetch_suggestions(query: str, lang: str = "fr") -> list[str]:
-    params = {"client": "firefox", "hl": lang, "q": query}
+def fetch_suggestions(query: str, lang: str = DEFAULT_LANG) -> list[str]:
+    hl = get_google_hl(lang)
+    params = {"client": "firefox", "hl": hl, "q": query}
     response = requests.get(
         AUTOCOMPLETE_URL,
         params=params,
@@ -492,13 +543,17 @@ def fetch_suggestions(query: str, lang: str = "fr") -> list[str]:
     data = response.json()
     if not isinstance(data, list) or len(data) < 2:
         return []
-    return [s.lower() for s in data[1] if isinstance(s, str)]
+    results = []
+    for s in data[1]:
+        if isinstance(s, str):
+            results.append(normalize_keyword(s, lang))
+    return results
 
 
-def build_queries(seed: str) -> list[str]:
+def build_queries(seed: str, lang: str = DEFAULT_LANG) -> list[str]:
     queries = [seed]
-    if should_expand(seed):
-        queries.extend(f"{seed} {mod}" for mod in modifiers_for_seed(seed))
+    if should_expand(seed, lang):
+        queries.extend(f"{seed} {mod}" for mod in modifiers_for_seed(seed, lang))
     return queries
 
 
@@ -506,7 +561,7 @@ def expand_keyword(seed: str, lang: str, delay: float) -> tuple[set[str], set[st
     results: set[str] = set()
     direct: set[str] = set()
 
-    for query in build_queries(seed):
+    for query in build_queries(seed, lang):
         try:
             suggestions = fetch_suggestions(query, lang)
             results.update(suggestions)
@@ -522,21 +577,23 @@ def expand_keyword(seed: str, lang: str, delay: float) -> tuple[set[str], set[st
 
 def scrape_keywords(
     input_keywords: list[str],
-    lang: str = "fr",
+    lang: str = DEFAULT_LANG,
     delay: float = DEFAULT_DELAY,
     max_per_seed: int = MAX_PER_SEED,
     max_per_prefix: int = MAX_PER_PREFIX,
     max_per_root: int = MAX_PER_ROOT,
 ) -> set[str]:
-    theme_vocab = build_theme_vocab(input_keywords)
-    theme_anchors = build_theme_anchors(input_keywords)
+    profile = get_lang_profile(lang)
+    theme_vocab = build_theme_vocab(input_keywords, lang)
+    theme_anchors = build_theme_anchors(input_keywords, lang)
     all_keywords: set[str] = set()
     all_direct: set[str] = set()
     total_raw = 0
     total_filtered = 0
 
     print(
-        f"Source : Google autocomplete | filtre thème intelligent\n"
+        f"Source : Google autocomplete (hl={get_google_hl(lang)}) | "
+        f"langue : {profile.label}\n"
         f"Limites : {max_per_seed}/seed, {max_per_prefix}/préfixe, {max_per_root}/racine\n"
         f"Vocabulaire thème : {len(theme_vocab)} mots, {len(theme_anchors)} ancres\n"
     )
@@ -553,13 +610,15 @@ def scrape_keywords(
             theme_vocab=theme_vocab,
             theme_anchors=theme_anchors,
             direct=direct,
+            profile=profile,
+            lang=lang,
             max_per_seed=max_per_seed,
             max_per_prefix=max_per_prefix,
         )
         total_filtered += len(cleaned)
         all_keywords.update(cleaned)
 
-        mode = "direct" if not should_expand(seed) else f"{len(build_queries(seed))} requêtes"
+        mode = "direct" if not should_expand(seed, lang) else f"{len(build_queries(seed, lang))} requêtes"
         print(
             f"  => {len(expanded)} brutes -> {len(cleaned)} retenues "
             f"({mode}, {len(all_keywords)} uniques au total)\n"
@@ -587,7 +646,7 @@ def save_keywords(keywords: set[str], output_path: Path) -> None:
 def run_scraper(
     input_path: Path,
     output_path: Path | None = None,
-    lang: str = "fr",
+    lang: str = DEFAULT_LANG,
     delay: float = DEFAULT_DELAY,
     preset_id: str = DEFAULT_PRESET_ID,
 ) -> tuple[int, Path]:
@@ -595,9 +654,10 @@ def run_scraper(
         output_path = input_path.with_name(f"{input_path.stem}_keywords.txt")
 
     preset = get_preset(preset_id)
-    input_keywords = load_keywords(input_path)
+    profile = get_lang_profile(lang)
+    input_keywords = load_keywords(input_path, lang)
     print(f"{len(input_keywords)} keywords chargés depuis {input_path}")
-    print(f"Preset : {preset.label}\n")
+    print(f"Preset : {preset.label} | Langue : {profile.label} ({get_google_hl(lang)})\n")
 
     enriched = scrape_keywords(
         input_keywords,
