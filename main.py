@@ -53,7 +53,7 @@ GENERIC_WORDS = frozenset({
 })
 
 AMBIGUOUS_WORDS = frozenset({
-    "adn", "vf", "ova", "hac", "iam", "rtm", "rcv", "rds", "tec", "ter", "tcl",
+    "vf", "ova", "hac", "iam", "rtm", "rcv", "rds", "tec", "ter", "tcl",
     "gsm", "psn", "ugc", "ubb", "zou", "voo", "wow", "arn", "apk", "logo", "kit",
     "gym", "hair", "immo", "moto", "auto", "autos", "golf", "cycle", "danse",
     "data", "dijon", "lyon", "nord", "fajr", "juif", "kids", "klm", "kiwi",
@@ -95,8 +95,11 @@ PLATFORM_WORDS = frozenset({
     "adn", "crunchyroll", "wakanim", "funimation", "hidive", "netflix",
 })
 
+# Plateformes courtes : autocomplete Google produit adnan/adnil pour le seed « adn ».
+SHORT_PLATFORM_MAX_LEN = 4
+
 CORE_THEME_ANCHORS = frozenset({
-    "anime", "manga", "vostfr", "isekai", "shonen", "seinen", "mecha", "yaoi", "yuri",
+    "anime", "manga", "vostfr", "adn", "isekai", "shonen", "seinen", "mecha", "yaoi", "yuri",
     "cosplay", "otaku", "webtoon", "simulcast", "crunchyroll", "wakanim", "funimation",
     "hidive", "fansub", "scantrad", "doujin", "kawaii", "chibi", "harem", "ecchi",
     "mangaka", "seiyu", "figurine", "goodies", "poster", "artbook", "peluche",
@@ -141,6 +144,17 @@ def has_cjk_chars(text: str) -> bool:
         code = ord(char)
         for start, end in CJK_RANGES:
             if start <= code <= end:
+                return True
+    return False
+
+
+def is_platform_prefix_false_positive(word: str) -> bool:
+    """Rejette adnan/adnil… : mots qui commencent par une plateforme sans être celle-ci."""
+    wl = word.lower()
+    for platform in PLATFORM_WORDS:
+        plen = len(platform)
+        if plen <= SHORT_PLATFORM_MAX_LEN and wl.startswith(platform) and wl != platform:
+            if len(wl) > plen:
                 return True
     return False
 
@@ -366,6 +380,9 @@ def is_valid_keyword(
         return False
 
     if len(words) != len(set(words)):
+        return False
+
+    if any(is_platform_prefix_false_positive(w) for w in words):
         return False
 
     min_tail = 1 if is_cjk_lang(lang) else 2

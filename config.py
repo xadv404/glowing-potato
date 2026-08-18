@@ -97,7 +97,7 @@ _FR_WORDS = frozenset({
     "comédie", "comedie", "drame", "dramatique", "fantasy", "magie", "surnaturel",
     "cyberpunk", "ecchi", "harem", "isekai", "shonen", "seinen", "mecha", "vostfr",
     "manga", "anime", "figurine", "cosplay", "opening", "scan", "scantrad", "fansub",
-    "crunchyroll", "wakanim", "netflix", "otaku", "kawaii", "chibi", "yaoi", "yuri",
+    "crunchyroll", "wakanim", "netflix", "adn", "otaku", "kawaii", "chibi", "yaoi", "yuri",
     "japonais", "japonesa", "chinois", "francais", "français", "gratuit", "complet",
     "streaming", "legal", "légal", "populaire", "culte", "nouveau", "nouveauté",
     "liste", "saison", "episode", "épisode", "film", "films", "serie", "série",
