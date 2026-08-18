@@ -95,8 +95,8 @@ def build_dynamic_modifiers(
     lang: str = DEFAULT_LANG,
 ) -> list[str]:
     """
-    Modifiers = generic_modifiers de la langue
-                + mots non-stopword présents dans ≥ 2 seeds différents.
+    Modifiers = mots non-stopword présents dans ≥ 2 seeds différents.
+    Entièrement dérivés des seeds — aucun terme prédéfini.
     Limité à MAX_MODIFIERS pour contrôler le volume de requêtes.
     """
     stopwords = lang_profile.stopwords
@@ -114,20 +114,12 @@ def build_dynamic_modifiers(
                 word_seed_count[wl] = word_seed_count.get(wl, 0) + 1
                 seen_in_seed.add(wl)
 
-    dominant = {w for w, cnt in word_seed_count.items() if cnt >= 2}
+    dominant = sorted(
+        (w for w, cnt in word_seed_count.items() if cnt >= 2),
+        key=lambda w: (-word_seed_count[w], w),
+    )
 
-    modifiers: list[str] = []
-    seen: set[str] = set()
-    for mod in lang_profile.generic_modifiers:
-        if mod not in seen:
-            modifiers.append(mod)
-            seen.add(mod)
-    for w in sorted(dominant):
-        if w not in seen:
-            modifiers.append(w)
-            seen.add(w)
-
-    return modifiers[:MAX_MODIFIERS]
+    return dominant[:MAX_MODIFIERS]
 
 
 def is_valid_form(keyword: str, lang: str = DEFAULT_LANG) -> bool:
