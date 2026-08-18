@@ -4,7 +4,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from config import DEFAULT_PRESET_ID, SCORE_PRESETS, get_preset
+from config import DEFAULT_PRESET_ID, QUALITY_PRESETS, get_preset
 from dorks import run_generator as run_dork_generator
 from main import run_scraper
 
@@ -48,7 +48,7 @@ class ToolkitApp(tk.Tk):
             ).grid(row=0, column=col, sticky="w", padx=8)
 
         # --- Keywords section ---
-        self.kw_frame = ttk.LabelFrame(self, text="Keywords (multi-source)", padding=8)
+        self.kw_frame = ttk.LabelFrame(self, text="Keywords (Google autocomplete)", padding=8)
         self.kw_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         ttk.Label(self.kw_frame, text="Fichier seeds (.txt) :").grid(row=0, column=0, sticky="w")
@@ -65,7 +65,7 @@ class ToolkitApp(tk.Tk):
         preset_combo = ttk.Combobox(
             self.kw_frame,
             textvariable=self.preset_var,
-            values=[p.label for p in SCORE_PRESETS.values()],
+            values=[p.label for p in QUALITY_PRESETS.values()],
             state="readonly",
             width=42,
         )
@@ -117,7 +117,7 @@ class ToolkitApp(tk.Tk):
         self.status_label = ttk.Label(self, text="Prêt.")
         self.status_label.grid(row=5, column=0, columnspan=3, sticky="w", padx=12, pady=(0, 10))
 
-        self._label_to_id = {p.label: p.id for p in SCORE_PRESETS.values()}
+        self._label_to_id = {p.label: p.id for p in QUALITY_PRESETS.values()}
         self._on_mode_change()
 
     def _on_mode_change(self) -> None:
@@ -258,11 +258,13 @@ class ToolkitApp(tk.Tk):
         self.status_label.config(text="Terminé.")
 
         if mode == "pipeline":
+            from dorks import SQLI_HQ_TEMPLATES
+            tpl = len(SQLI_HQ_TEMPLATES)
             messagebox.showinfo(
                 "Terminé",
                 f"Preset : {self._current_preset().label}\n\n"
                 f"{kw_count} keywords :\n{enriched_path}\n\n"
-                f"{dork_count} dorks SQL :\n{dorks_path}",
+                f"{kw_count} × {tpl} dorktypes = {dork_count} dorks SQL :\n{dorks_path}",
             )
         elif mode == "keywords":
             messagebox.showinfo(
@@ -271,9 +273,12 @@ class ToolkitApp(tk.Tk):
                 f"{kw_count} keywords enrichis :\n{enriched_path}",
             )
         else:
+            from dorks import SQLI_HQ_TEMPLATES
+            tpl = len(SQLI_HQ_TEMPLATES)
+            kw_part = dork_count // tpl if tpl else dork_count
             messagebox.showinfo(
                 "Terminé",
-                f"{dork_count} dorks SQL HQ :\n{dorks_path}",
+                f"{kw_part} keywords × {tpl} dorktypes = {dork_count} dorks SQL HQ :\n{dorks_path}",
             )
 
     def _on_error(self, message: str) -> None:

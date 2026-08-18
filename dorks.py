@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-# HQ Google dorks SQL — 1 keyword = 1 dork
+# HQ Google dorks SQL — chaque keyword × tous les dorktypes
 # Curated: param + error combos (highest signal), CVE SQL 2026, GHDB/Box Piper 2026
 # Sources: DorkFinder, Box Piper 2026, SecOps-Google-Dork-Collection, CVE advisories
 # {q} = keyword
@@ -94,20 +94,20 @@ def load_lines(path: Path) -> list[str]:
     return lines
 
 
-def pick_template(keyword: str) -> str:
-    return SQLI_HQ_TEMPLATES[hash(keyword) % len(SQLI_HQ_TEMPLATES)]
-
-
-def build_dork(keyword: str, domain: str | None = None) -> str:
+def build_dork(keyword: str, template: str, domain: str | None = None) -> str:
     q = quote_keyword(keyword)
-    dork = pick_template(keyword).format(q=q)
+    dork = template.format(q=q)
     if domain:
         return f"site:{domain} {dork}"
     return dork
 
 
 def generate_dorks(keywords: list[str], domain: str | None = None) -> list[str]:
-    return [build_dork(keyword, domain) for keyword in keywords]
+    dorks: list[str] = []
+    for keyword in keywords:
+        for template in SQLI_HQ_TEMPLATES:
+            dorks.append(build_dork(keyword, template, domain))
+    return dorks
 
 
 def save_dorks(dorks: list[str], output_path: Path) -> None:
@@ -127,8 +127,11 @@ def run_generator(
     dorks = generate_dorks(keywords, domain=domain)
     save_dorks(dorks, output_path)
 
-    print(f"{len(keywords)} keywords -> {len(dorks)} dorks SQL HQ (1 par keyword)")
-    print(f"{len(SQLI_HQ_TEMPLATES)} dorktypes HQ en rotation")
+    template_count = len(SQLI_HQ_TEMPLATES)
+    print(
+        f"{len(keywords)} keywords × {template_count} dorktypes "
+        f"= {len(dorks)} dorks SQL HQ"
+    )
     if domain:
         print(f"Domaine : {domain}")
     print(f"Sauvegardé : {output_path}")

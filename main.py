@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 import sys
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
 
-from config import DEFAULT_PRESET_ID, ScorePreset, get_preset
+from config import DEFAULT_PRESET_ID, QualityPreset, get_preset
 
-GOOGLE_AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
-BING_AUTOCOMPLETE_URL = "https://api.bing.com/osjson.aspx"
+AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
 DEFAULT_DELAY = 0.12
 MIN_WORDS = 1
 MAX_WORDS = 3
 MAX_PER_PREFIX = 3
 MAX_PER_ROOT = 2
 MAX_PER_SEED = 25
-MIN_KEYWORD_SCORE = 4
-DEFAULT_SOURCES = ("google", "youtube", "bing")
 
-# Modificateurs curés (remplace l'expansion a-z0-9).
 CURATED_MODIFIERS = [
     "gratuit", "vostfr", "vf", "streaming", "legal", "complet", "voir", "regarder",
     "site", "liste", "top", "meilleur", "forum", "avis", "prix", "guide",
@@ -28,7 +23,6 @@ CURATED_MODIFIERS = [
     "opening", "scan", "france", "francais", "telecharger", "sans", "pub",
 ]
 
-# Mots trop génériques : seuls, ils ouvrent des suggestions hors-thème.
 GENERIC_WORDS = frozenset({
     "abonnement", "streaming", "catalogue", "application", "plateforme",
     "regarder", "voir", "meilleur", "meilleure", "top", "nouveau", "nouveaux",
@@ -99,13 +93,6 @@ BROAD_THEME_WORDS = frozenset({
 })
 
 
-@dataclass
-class ExpansionResult:
-    keyword_sources: dict[str, set[str]] = field(default_factory=dict)
-    direct: set[str] = field(default_factory=set)
-    raw_count: int = 0
-
-
 def build_theme_vocab(seeds: list[str]) -> set[str]:
     vocab: set[str] = set()
     for seed in seeds:
@@ -156,13 +143,6 @@ def should_expand(seed: str) -> bool:
 def modifiers_for_seed(seed: str) -> list[str]:
     seed_words = set(seed.split())
     return [mod for mod in CURATED_MODIFIERS if mod not in seed_words]
-
-
-def keyword_score(keyword: str, sources: set[str], direct: set[str]) -> int:
-    score = len(sources) * 2
-    if keyword in direct:
-        score += 3
-    return score
 
 
 def has_off_topic_tail(
@@ -299,8 +279,35 @@ def root_key(keyword: str) -> str:
     return words[0]
 
 
-def global_dedupe_scored(
-    scored_keywords: dict[str, int],
+def dedupe_repetitive(
+    keywords: set[str],
+    direct: set[str] | None = None,
+    max_per_prefix: int = MAX_PER_PREFIX,
+) -> set[str]:
+    direct = direct or set()
+    buckets: dict[str, int] = {}
+    kept: set[str] = set()
+
+    def rank(keyword: str) -> tuple:
+        return (
+            0 if keyword in direct else 1,
+            len(keyword.split()),
+            len(keyword),
+            keyword,
+        )
+
+    for keyword in sorted(keywords, key=rank):
+        key = prefix_key(keyword)
+        if buckets.get(key, 0) >= max_per_prefix:
+            continue
+        buckets[key] = buckets.get(key, 0) + 1
+        kept.add(keyword)
+
+    return kept
+
+
+def global_dedupe(
+    keywords: set[str],
     direct: set[str] | None = None,
     max_per_root: int = MAX_PER_ROOT,
 ) -> set[str]:
@@ -310,13 +317,13 @@ def global_dedupe_scored(
 
     def rank(keyword: str) -> tuple:
         return (
-            -scored_keywords[keyword],
             0 if keyword in direct else 1,
             len(keyword.split()),
+            len(keyword),
             keyword,
         )
 
-    for keyword in sorted(scored_keywords, key=rank):
+    for keyword in sorted(keywords, key=rank):
         key = root_key(keyword)
         if buckets.get(key, 0) >= max_per_root:
             continue
@@ -326,51 +333,40 @@ def global_dedupe_scored(
     return kept
 
 
-def filter_keywords_scored(
-    keyword_sources: dict[str, set[str]],
+def filter_keywords(
+    raw_keywords: set[str],
     seed: str,
     theme_vocab: set[str],
     theme_anchors: set[str],
     direct: set[str],
-    min_score: int = MIN_KEYWORD_SCORE,
     max_per_seed: int = MAX_PER_SEED,
     max_per_prefix: int = MAX_PER_PREFIX,
-) -> tuple[set[str], dict[str, int]]:
-    candidates: list[tuple[int, str]] = []
-
-    for keyword, sources in keyword_sources.items():
-        if not is_valid_keyword(
-            keyword,
+) -> set[str]:
+    valid = {
+        kw for kw in raw_keywords
+        if is_valid_keyword(
+            kw,
             seed=seed,
             theme_vocab=theme_vocab,
             theme_anchors=theme_anchors,
             direct=direct,
-        ):
-            continue
+        )
+    }
+    deduped = dedupe_repetitive(valid, direct=direct, max_per_prefix=max_per_prefix)
 
-        score = keyword_score(keyword, sources, direct)
-        if score < min_score:
-            continue
+    if len(deduped) <= max_per_seed:
+        return deduped
 
-        candidates.append((score, keyword))
+    def rank(keyword: str) -> tuple:
+        return (
+            0 if keyword in direct else 1,
+            len(keyword.split()),
+            len(keyword),
+            keyword,
+        )
 
-    candidates.sort(key=lambda item: (-item[0], len(item[1].split()), item[1]))
-
-    prefix_buckets: dict[str, int] = {}
-    kept: set[str] = set()
-    scores: dict[str, int] = {}
-
-    for score, keyword in candidates:
-        if len(kept) >= max_per_seed:
-            break
-        key = prefix_key(keyword)
-        if prefix_buckets.get(key, 0) >= max_per_prefix:
-            continue
-        prefix_buckets[key] = prefix_buckets.get(key, 0) + 1
-        kept.add(keyword)
-        scores[keyword] = score
-
-    return kept, scores
+    ranked = sorted(deduped, key=rank)
+    return set(ranked[:max_per_seed])
 
 
 def load_keywords(path: Path) -> list[str]:
@@ -393,10 +389,10 @@ def load_keywords(path: Path) -> list[str]:
     return keywords
 
 
-def fetch_google_suggestions(query: str, lang: str = "fr") -> list[str]:
+def fetch_suggestions(query: str, lang: str = "fr") -> list[str]:
     params = {"client": "firefox", "hl": lang, "q": query}
     response = requests.get(
-        GOOGLE_AUTOCOMPLETE_URL,
+        AUTOCOMPLETE_URL,
         params=params,
         headers={"User-Agent": "Mozilla/5.0"},
         timeout=10,
@@ -406,80 +402,6 @@ def fetch_google_suggestions(query: str, lang: str = "fr") -> list[str]:
     if not isinstance(data, list) or len(data) < 2:
         return []
     return [s.lower() for s in data[1] if isinstance(s, str)]
-
-
-def fetch_youtube_suggestions(query: str, lang: str = "fr") -> list[str]:
-    params = {"client": "firefox", "ds": "yt", "hl": lang, "q": query}
-    response = requests.get(
-        GOOGLE_AUTOCOMPLETE_URL,
-        params=params,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=10,
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, list) or len(data) < 2:
-        return []
-    return [s.lower() for s in data[1] if isinstance(s, str)]
-
-
-def fetch_bing_suggestions(query: str, lang: str = "fr") -> list[str]:
-    params = {"query": query, "language": lang}
-    response = requests.get(
-        BING_AUTOCOMPLETE_URL,
-        params=params,
-        headers={"User-Agent": "Mozilla/5.0"},
-        timeout=10,
-    )
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, list) or len(data) < 2:
-        return []
-    return [s.lower() for s in data[1] if isinstance(s, str)]
-
-
-SOURCE_FETCHERS = {
-    "google": fetch_google_suggestions,
-    "youtube": fetch_youtube_suggestions,
-    "bing": fetch_bing_suggestions,
-}
-
-
-def fetch_all_sources(
-    query: str,
-    lang: str,
-    sources: tuple[str, ...],
-) -> dict[str, list[str]]:
-    results: dict[str, list[str]] = {}
-    for source in sources:
-        fetcher = SOURCE_FETCHERS.get(source)
-        if fetcher is None:
-            continue
-        try:
-            results[source] = fetcher(query, lang)
-        except Exception as exc:
-            print(f"    [{source}] {query!r} -> erreur: {exc}", file=sys.stderr)
-            results[source] = []
-    return results
-
-
-def merge_suggestions(
-    result: ExpansionResult,
-    suggestions_by_source: dict[str, list[str]],
-    *,
-    direct_query: bool,
-) -> int:
-    added = 0
-    for source, suggestions in suggestions_by_source.items():
-        for suggestion in suggestions:
-            if suggestion not in result.keyword_sources:
-                result.keyword_sources[suggestion] = set()
-                added += 1
-            result.keyword_sources[suggestion].add(source)
-            if direct_query:
-                result.direct.add(suggestion)
-    result.raw_count += sum(len(v) for v in suggestions_by_source.values())
-    return added
 
 
 def build_queries(seed: str) -> list[str]:
@@ -489,35 +411,28 @@ def build_queries(seed: str) -> list[str]:
     return queries
 
 
-def expand_keyword(
-    seed: str,
-    lang: str,
-    delay: float,
-    sources: tuple[str, ...] = DEFAULT_SOURCES,
-) -> ExpansionResult:
-    result = ExpansionResult()
-    queries = build_queries(seed)
+def expand_keyword(seed: str, lang: str, delay: float) -> tuple[set[str], set[str]]:
+    results: set[str] = set()
+    direct: set[str] = set()
 
-    for query in queries:
-        is_direct = query == seed
-        suggestions_by_source = fetch_all_sources(query, lang, sources)
-        added = merge_suggestions(result, suggestions_by_source, direct_query=is_direct)
-        src_counts = {s: len(v) for s, v in suggestions_by_source.items()}
-        print(
-            f"  {query!r} -> {src_counts} (+{added} uniques, "
-            f"{len(result.keyword_sources)} total)"
-        )
+    for query in build_queries(seed):
+        try:
+            suggestions = fetch_suggestions(query, lang)
+            results.update(suggestions)
+            if query == seed:
+                direct.update(suggestions)
+            print(f"  {query!r} -> +{len(suggestions)} ({len(results)} total)")
+        except Exception as exc:
+            print(f"  {query!r} -> erreur: {exc}", file=sys.stderr)
         time.sleep(delay)
 
-    return result
+    return results, direct
 
 
 def scrape_keywords(
     input_keywords: list[str],
     lang: str = "fr",
     delay: float = DEFAULT_DELAY,
-    sources: tuple[str, ...] = DEFAULT_SOURCES,
-    min_score: int = MIN_KEYWORD_SCORE,
     max_per_seed: int = MAX_PER_SEED,
     max_per_prefix: int = MAX_PER_PREFIX,
     max_per_root: int = MAX_PER_ROOT,
@@ -526,53 +441,46 @@ def scrape_keywords(
     theme_anchors = build_theme_anchors(input_keywords)
     all_keywords: set[str] = set()
     all_direct: set[str] = set()
-    all_scores: dict[str, int] = {}
     total_raw = 0
     total_filtered = 0
 
     print(
-        f"Sources : {', '.join(sources)} | score min : {min_score}\n"
+        f"Source : Google autocomplete | filtre thème intelligent\n"
         f"Limites : {max_per_seed}/seed, {max_per_prefix}/préfixe, {max_per_root}/racine\n"
-        f"Vocabulaire thème : {len(theme_vocab)} mots, "
-        f"{len(theme_anchors)} ancres\n"
+        f"Vocabulaire thème : {len(theme_vocab)} mots, {len(theme_anchors)} ancres\n"
     )
 
     for index, seed in enumerate(input_keywords, start=1):
         print(f"[{index}/{len(input_keywords)}] {seed}")
-        expanded = expand_keyword(seed, lang, delay, sources)
-        total_raw += expanded.raw_count
-        all_direct.update(expanded.direct)
+        expanded, direct = expand_keyword(seed, lang, delay)
+        total_raw += len(expanded)
+        all_direct.update(direct)
 
-        cleaned, scores = filter_keywords_scored(
-            expanded.keyword_sources,
+        cleaned = filter_keywords(
+            expanded,
             seed=seed,
             theme_vocab=theme_vocab,
             theme_anchors=theme_anchors,
-            direct=expanded.direct,
-            min_score=min_score,
+            direct=direct,
             max_per_seed=max_per_seed,
             max_per_prefix=max_per_prefix,
         )
         total_filtered += len(cleaned)
         all_keywords.update(cleaned)
-        for kw, sc in scores.items():
-            all_scores[kw] = max(all_scores.get(kw, 0), sc)
 
         mode = "direct" if not should_expand(seed) else f"{len(build_queries(seed))} requêtes"
         print(
-            f"  => {expanded.raw_count} brutes -> {len(cleaned)} retenues "
+            f"  => {len(expanded)} brutes -> {len(cleaned)} retenues "
             f"({mode}, {len(all_keywords)} uniques au total)\n"
         )
 
     before_global = len(all_keywords)
-    all_keywords = global_dedupe_scored(
-        all_scores, direct=all_direct, max_per_root=max_per_root
-    )
+    all_keywords = global_dedupe(all_keywords, direct=all_direct, max_per_root=max_per_root)
 
     print(
         f"Filtrage : {total_raw} brutes -> {total_filtered} retenues "
         f"-> {before_global} uniques -> {len(all_keywords)} après dédup globale "
-        f"(score>={min_score}, max {max_per_prefix}/préfixe, max {max_per_root}/racine)\n"
+        f"(max {max_per_prefix}/préfixe, max {max_per_root}/racine)\n"
     )
 
     return all_keywords
@@ -585,47 +493,25 @@ def save_keywords(keywords: set[str], output_path: Path) -> None:
     )
 
 
-def resolve_scraper_options(
-    preset_id: str = DEFAULT_PRESET_ID,
-    min_score: int | None = None,
-) -> ScorePreset:
-    preset = get_preset(preset_id)
-    if min_score is not None:
-        return ScorePreset(
-            id=preset.id,
-            label=preset.label,
-            description=preset.description,
-            min_score=min_score,
-            max_per_seed=preset.max_per_seed,
-            max_per_prefix=preset.max_per_prefix,
-            max_per_root=preset.max_per_root,
-        )
-    return preset
-
-
 def run_scraper(
     input_path: Path,
     output_path: Path | None = None,
     lang: str = "fr",
     delay: float = DEFAULT_DELAY,
-    sources: tuple[str, ...] = DEFAULT_SOURCES,
     preset_id: str = DEFAULT_PRESET_ID,
-    min_score: int | None = None,
 ) -> tuple[int, Path]:
     if output_path is None:
         output_path = input_path.with_name(f"{input_path.stem}_keywords.txt")
 
-    preset = resolve_scraper_options(preset_id, min_score)
+    preset = get_preset(preset_id)
     input_keywords = load_keywords(input_path)
     print(f"{len(input_keywords)} keywords chargés depuis {input_path}")
-    print(f"Preset : {preset.label} (score>={preset.min_score})\n")
+    print(f"Preset : {preset.label}\n")
 
     enriched = scrape_keywords(
         input_keywords,
         lang=lang,
         delay=delay,
-        sources=sources,
-        min_score=preset.min_score,
         max_per_seed=preset.max_per_seed,
         max_per_prefix=preset.max_per_prefix,
         max_per_root=preset.max_per_root,
