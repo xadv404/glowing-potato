@@ -10,7 +10,7 @@ from dorks import SQLI_SQL_TEMPLATES, run_generator
 class DorkGeneratorApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("SQL Dork Generator")
+        self.title("SQL Dork Generator — HQ")
         self.resizable(False, False)
         self.keywords_file: Path | None = None
         self._build_ui()
@@ -26,7 +26,7 @@ class DorkGeneratorApp(tk.Tk):
 
         ttk.Label(
             self,
-            text=f"{len(SQLI_SQL_TEMPLATES)} dorktypes 100% SQL — 1 keyword = 1 dork",
+            text=f"{len(SQLI_SQL_TEMPLATES)} dorktypes SQL HQ — 1 keyword = 1 dork",
             font=("Segoe UI", 9),
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12)
 
@@ -122,7 +122,7 @@ class DorkGeneratorApp(tk.Tk):
         self.status_label.config(text="Terminé.")
         messagebox.showinfo(
             "Terminé",
-            f"{count} dorks SQL générés (1 par keyword) :\n{output_path}",
+            f"{count} dorks SQL HQ générés (1 par keyword) :\n{output_path}",
         )
 
     def _on_error(self, message: str) -> None:
