@@ -66,6 +66,51 @@ ENGLISH_NOISE = frozenset({
     "platform", "application", "calendar", "community", "convention", "catalog",
 })
 
+# Mots EN fréquents dans l'autocomplete Google (hl=fr).
+ENGLISH_TAIL_WORDS = frozenset({
+    "adventure", "comedy", "popular", "complete", "series", "cultural", "impact",
+    "influence", "references", "catalogs", "service", "collection", "videos",
+    "couple", "commune", "dramedy", "dungeons", "expeditions", "guidelines",
+    "guideau", "guideverse", "puberty", "completo", "plattform", "filme", "maiwenn",
+    "stremio", "catalog", "community", "calendar", "typing", "tower", "style",
+    "best", "list", "game", "tips", "codes", "popular", "season", "episode",
+    "american", "influence", "references", "culture", "impact", "series",
+    "complete", "guideline", "guidelines", "video", "videos", "couple",
+    "commune", "service", "collection", "catalogs", "catalog", "dramedy",
+    "dungeons", "expeditions", "apocalypse", "skeleton", "triggers", "school",
+})
+
+# Bruit hors-thème : jeux, typos, noms propres parasites.
+OFF_TOPIC_WORDS = frozenset({
+    "codes", "code", "guideau", "guideverse", "maiwenn", "plattform", "filme",
+    "completo", "stremio", "expeditions", "dramedy", "guidelines", "puberty",
+    "nexus", "salt", "sama", "slayer", "wallpaper", "recap", "horizon",
+})
+
+# Termes FR / niche anime explicitement acceptés en queue de keyword.
+FRENCH_ANIME_WORDS = frozenset({
+    "action", "combat", "aventure", "aventureux", "romance", "romantique", "horreur",
+    "comédie", "comedie", "drame", "dramatique", "fantasy", "magie", "surnaturel",
+    "cyberpunk", "ecchi", "harem", "isekai", "shonen", "seinen", "mecha", "vostfr",
+    "manga", "anime", "figurine", "cosplay", "opening", "scan", "scantrad", "fansub",
+    "crunchyroll", "wakanim", "netflix", "otaku", "kawaii", "chibi", "yaoi", "yuri",
+    "japonais", "japonesa", "chinois", "francais", "français", "gratuit", "complet",
+    "streaming", "legal", "légal", "populaire", "culte", "nouveau", "nouveauté",
+    "liste", "saison", "episode", "épisode", "film", "films", "serie", "série",
+    "regarder", "voir", "site", "forum", "avis", "prix", "guide", "top", "meilleur",
+    "scolaire", "edgerunners", "kyoani", "ufotable", "mappa", "ghibli", "toei",
+    "bones", "trigger", "madhouse", "costume", "collector", "peluche", "poster",
+    "goodies", "artbook", "coffret", "sticker", "doujin", "webtoon", "simulcast",
+    "tankobon", "mangaka", "seiyu", "abonnement", "catalogue", "plateforme",
+})
+
+FRENCH_SUFFIXES = (
+    "tion", "sion", "ment", "eux", "euse", "eur", "ais", "ois", "ant", "ent",
+    "age", "ique", "able", "elle", "ette", "aux", "eau",
+)
+
+ACCENT_CHARS = frozenset("àâäéèêëïîôùûüç")
+
 PLATFORM_WORDS = frozenset({
     "adn", "crunchyroll", "wakanim", "funimation", "hidive", "netflix",
 })
@@ -145,6 +190,30 @@ def modifiers_for_seed(seed: str) -> list[str]:
     return [mod for mod in CURATED_MODIFIERS if mod not in seed_words]
 
 
+def has_french_marker(word: str) -> bool:
+    if any(c in word for c in ACCENT_CHARS):
+        return True
+    return any(word.endswith(suffix) for suffix in FRENCH_SUFFIXES)
+
+
+def is_acceptable_word(
+    word: str,
+    theme_vocab: set[str],
+    theme_anchors: set[str],
+) -> bool:
+    if word in theme_anchors or word in CORE_THEME_ANCHORS:
+        return True
+    if word in FRENCH_ANIME_WORDS:
+        return True
+    if word in theme_vocab and word not in BROAD_THEME_WORDS:
+        return True
+    if word in BROAD_THEME_WORDS and word in FRENCH_ANIME_WORDS:
+        return True
+    if has_french_marker(word) and len(word) >= 4:
+        return True
+    return False
+
+
 def has_off_topic_tail(
     keyword: str,
     theme_vocab: set[str],
@@ -156,18 +225,35 @@ def has_off_topic_tail(
         return False
 
     tail = words[1:]
-    if any(w in ENGLISH_NOISE or w in AMBIGUOUS_WORDS for w in tail):
+    blocked = ENGLISH_NOISE | ENGLISH_TAIL_WORDS | OFF_TOPIC_WORDS | AMBIGUOUS_WORDS
+    if any(w in blocked for w in tail):
         return True
 
     for w in tail:
-        if w in theme_anchors:
-            continue
-        if w in theme_vocab and w not in BROAD_THEME_WORDS:
+        if is_acceptable_word(w, theme_vocab, theme_anchors):
             continue
         if len(w) <= 3:
             return True
+        # Mot long sans marqueur FR ni ancrage thème → probablement EN / hors-thème.
+        if len(w) >= 4 and not has_french_marker(w):
+            return True
 
     return False
+
+
+def keyword_has_theme_anchor(
+    keyword: str,
+    theme_vocab: set[str],
+    theme_anchors: set[str],
+) -> bool:
+    words = set(keyword.split())
+    if words & theme_anchors:
+        return True
+    specific = {
+        w for w in words
+        if w in theme_vocab and w not in GENERIC_WORDS and w not in BROAD_THEME_WORDS
+    }
+    return len(specific) >= 1
 
 
 def is_on_theme(
@@ -247,6 +333,11 @@ def is_valid_keyword(
 
     if seed and theme_vocab is not None:
         if not is_on_theme(keyword, seed, theme_vocab, theme_anchors, direct):
+            return False
+        if len(words) >= 2 and not keyword_has_theme_anchor(keyword, theme_vocab, theme_anchors):
+            return False
+        # Mots seuls : uniquement ancres forte identité (pas "streaming", "adn"...).
+        if len(words) == 1 and words[0] not in theme_anchors and words[0] not in CORE_THEME_ANCHORS:
             return False
 
     return True
