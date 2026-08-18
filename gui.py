@@ -27,7 +27,7 @@ class KeywordScraperApp(tk.Tk):
 
         ttk.Label(
             self,
-            text="1. Scrape keywords → 2. Génère dorks SQL depuis le fichier enrichi",
+            text="1. Scrape multi-source (Google/YouTube/Bing) → 2. Dorks SQL",
             font=("Segoe UI", 9),
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=12)
 
