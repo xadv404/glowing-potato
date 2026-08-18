@@ -7,6 +7,8 @@ from pathlib import Path
 
 import requests
 
+from config import DEFAULT_PRESET_ID, ScorePreset, get_preset
+
 GOOGLE_AUTOCOMPLETE_URL = "https://suggestqueries.google.com/complete/search"
 BING_AUTOCOMPLETE_URL = "https://api.bing.com/osjson.aspx"
 DEFAULT_DELAY = 0.12
@@ -333,6 +335,7 @@ def filter_keywords_scored(
     direct: set[str],
     min_score: int = MIN_KEYWORD_SCORE,
     max_per_seed: int = MAX_PER_SEED,
+    max_per_prefix: int = MAX_PER_PREFIX,
 ) -> tuple[set[str], dict[str, int]]:
     candidates: list[tuple[int, str]] = []
 
@@ -362,7 +365,7 @@ def filter_keywords_scored(
         if len(kept) >= max_per_seed:
             break
         key = prefix_key(keyword)
-        if prefix_buckets.get(key, 0) >= MAX_PER_PREFIX:
+        if prefix_buckets.get(key, 0) >= max_per_prefix:
             continue
         prefix_buckets[key] = prefix_buckets.get(key, 0) + 1
         kept.add(keyword)
@@ -516,6 +519,9 @@ def scrape_keywords(
     delay: float = DEFAULT_DELAY,
     sources: tuple[str, ...] = DEFAULT_SOURCES,
     min_score: int = MIN_KEYWORD_SCORE,
+    max_per_seed: int = MAX_PER_SEED,
+    max_per_prefix: int = MAX_PER_PREFIX,
+    max_per_root: int = MAX_PER_ROOT,
 ) -> set[str]:
     theme_vocab = build_theme_vocab(input_keywords)
     theme_anchors = build_theme_anchors(input_keywords)
@@ -527,6 +533,7 @@ def scrape_keywords(
 
     print(
         f"Sources : {', '.join(sources)} | score min : {min_score}\n"
+        f"Limites : {max_per_seed}/seed, {max_per_prefix}/préfixe, {max_per_root}/racine\n"
         f"Vocabulaire thème : {len(theme_vocab)} mots, "
         f"{len(theme_anchors)} ancres\n"
     )
@@ -544,6 +551,8 @@ def scrape_keywords(
             theme_anchors=theme_anchors,
             direct=expanded.direct,
             min_score=min_score,
+            max_per_seed=max_per_seed,
+            max_per_prefix=max_per_prefix,
         )
         total_filtered += len(cleaned)
         all_keywords.update(cleaned)
@@ -557,12 +566,14 @@ def scrape_keywords(
         )
 
     before_global = len(all_keywords)
-    all_keywords = global_dedupe_scored(all_scores, direct=all_direct)
+    all_keywords = global_dedupe_scored(
+        all_scores, direct=all_direct, max_per_root=max_per_root
+    )
 
     print(
         f"Filtrage : {total_raw} brutes -> {total_filtered} retenues "
         f"-> {before_global} uniques -> {len(all_keywords)} après dédup globale "
-        f"(score>={min_score}, max {MAX_PER_PREFIX}/préfixe, max {MAX_PER_ROOT}/racine)\n"
+        f"(score>={min_score}, max {max_per_prefix}/préfixe, max {max_per_root}/racine)\n"
     )
 
     return all_keywords
@@ -614,15 +625,36 @@ def parse_args() -> argparse.Namespace:
         help="Sources séparées par virgule (défaut: google,youtube,bing)",
     )
     parser.add_argument(
+        "--preset",
+        choices=["strict", "balanced", "permissive", "volume"],
+        default=DEFAULT_PRESET_ID,
+        help=f"Preset qualité keywords (défaut: {DEFAULT_PRESET_ID})",
+    )
+    parser.add_argument(
         "--min-score",
         type=int,
-        default=MIN_KEYWORD_SCORE,
-        help=(
-            "Score minimum (2 pts/source + 3 si direct). "
-            f"Défaut: {MIN_KEYWORD_SCORE} (= 2 sources ou 1 source + direct)"
-        ),
+        default=None,
+        help="Score minimum (override le preset si défini)",
     )
     return parser.parse_args()
+
+
+def resolve_scraper_options(
+    preset_id: str = DEFAULT_PRESET_ID,
+    min_score: int | None = None,
+) -> ScorePreset:
+    preset = get_preset(preset_id)
+    if min_score is not None:
+        return ScorePreset(
+            id=preset.id,
+            label=preset.label,
+            description=preset.description,
+            min_score=min_score,
+            max_per_seed=preset.max_per_seed,
+            max_per_prefix=preset.max_per_prefix,
+            max_per_root=preset.max_per_root,
+        )
+    return preset
 
 
 def run_scraper(
@@ -631,20 +663,26 @@ def run_scraper(
     lang: str = "fr",
     delay: float = DEFAULT_DELAY,
     sources: tuple[str, ...] = DEFAULT_SOURCES,
-    min_score: int = MIN_KEYWORD_SCORE,
+    preset_id: str = DEFAULT_PRESET_ID,
+    min_score: int | None = None,
 ) -> tuple[int, Path]:
     if output_path is None:
         output_path = input_path.with_name(f"{input_path.stem}_keywords.txt")
 
+    preset = resolve_scraper_options(preset_id, min_score)
     input_keywords = load_keywords(input_path)
-    print(f"{len(input_keywords)} keywords chargés depuis {input_path}\n")
+    print(f"{len(input_keywords)} keywords chargés depuis {input_path}")
+    print(f"Preset : {preset.label} (score>={preset.min_score})\n")
 
     enriched = scrape_keywords(
         input_keywords,
         lang=lang,
         delay=delay,
         sources=sources,
-        min_score=min_score,
+        min_score=preset.min_score,
+        max_per_seed=preset.max_per_seed,
+        max_per_prefix=preset.max_per_prefix,
+        max_per_root=preset.max_per_root,
     )
     save_keywords(enriched, output_path)
 
@@ -665,6 +703,7 @@ def main() -> None:
             lang=args.lang,
             delay=args.delay,
             sources=sources,
+            preset_id=args.preset,
             min_score=args.min_score,
         )
     except (FileNotFoundError, ValueError) as exc:
