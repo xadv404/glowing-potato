@@ -38,7 +38,7 @@ TRENDS_BATCH = 5      # 5 keywords/appel — suffisant pour détecter volume=0
 TRENDS_DELAY = 1.2   # secondes entre appels par worker
 TRENDS_WORKERS = 3   # workers parallèles (chacun son TrendReq, starts décalés)
 
-DEFAULT_DELAY = 0.15
+DEFAULT_DELAY = 0.05
 MIN_WORDS = 1
 MAX_WORDS = 3
 MAX_PER_PREFIX = 5
