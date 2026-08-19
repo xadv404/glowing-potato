@@ -22,7 +22,6 @@ from config import (
 )
 
 AUTOCOMPLETE_GOOGLE_URL = "https://suggestqueries.google.com/complete/search"
-DDG_URL = "https://duckduckgo.com/ac/"
 BING_URL = "https://api.bing.microsoft.com/v7.0/Suggestions"
 BING_API_KEY = os.environ.get("BING_API_KEY", "")
 
@@ -40,24 +39,6 @@ CJK_RANGES = (
     (0x4E00, 0x9FFF),  # CJK Unified
     (0xAC00, 0xD7AF),  # Hangul
 )
-
-_DDG_LOCALES: dict[str, str] = {
-    "fr": "fr-fr",
-    "en": "en-us",
-    "es": "es-es",
-    "de": "de-de",
-    "pt": "pt-br",
-    "it": "it-it",
-    "ru": "ru-ru",
-    "ar": "ar-xa",
-    "nl": "nl-nl",
-    "pl": "pl-pl",
-    "tr": "tr-tr",
-    "ja": "ja-jp",
-    "ko": "ko-kr",
-    "zh-cn": "zh-cn",
-    "zh-tw": "zh-tw",
-}
 
 
 @dataclass
@@ -381,25 +362,6 @@ def fetch_suggestions_google(query: str, lang: str = DEFAULT_LANG) -> list[str]:
     return []
 
 
-def fetch_suggestions_ddg(query: str, lang: str = DEFAULT_LANG) -> list[str]:
-    lang_norm = normalize_lang(lang)
-    kl = _DDG_LOCALES.get(lang_norm, "en-us")
-    params = {"q": query, "type": "list", "kl": kl}
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    for attempt in range(4):
-        try:
-            response = requests.get(DDG_URL, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            return _parse_suggestion_list(response.json(), lang)
-        except Exception as exc:
-            if attempt == 3:
-                return []  # DDG is optional — don't crash on failure
-            wait = 2 ** attempt
-            time.sleep(wait)
-
-    return []
-
 
 def fetch_suggestions_bing(query: str, lang: str = DEFAULT_LANG) -> list[str]:
     if not BING_API_KEY:
@@ -443,8 +405,8 @@ def fetch_multi_source(
     lang: str = DEFAULT_LANG,
 ) -> dict[str, float]:
     """
-    Fetch from all available sources and compute a cross-source confidence score.
-    Score = number of sources that suggested the keyword + position bonus (1/rank).
+    Fetch from Google + Bing (if BING_API_KEY is set) and compute a
+    cross-source confidence score: score = Σ(1 + 1/rank) per source.
     Keywords seen by multiple sources rank higher.
     """
     scores: dict[str, float] = {}
@@ -456,9 +418,6 @@ def fetch_multi_source(
 
     google_results = fetch_suggestions_google(query, lang)
     add_source(google_results)
-
-    ddg_results = fetch_suggestions_ddg(query, lang)
-    add_source(ddg_results)
 
     if BING_API_KEY:
         bing_results = fetch_suggestions_bing(query, lang)
@@ -550,7 +509,7 @@ def scrape_keywords(
     total_raw = 0
     total_filtered = 0
 
-    sources = ["Google", "DuckDuckGo"]
+    sources = ["Google"]
     if BING_API_KEY:
         sources.append("Bing")
 
