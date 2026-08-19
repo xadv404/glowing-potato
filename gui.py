@@ -116,7 +116,7 @@ class ToolkitApp(tk.Tk):
         ).grid(row=8, column=0, columnspan=2, sticky="w")
 
         # --- Dorks section ---
-        self.dork_frame = ttk.LabelFrame(self, text="Dorks", padding=8)
+        self.dork_frame = ttk.LabelFrame(self, text="Dorks SQL", padding=8)
         self.dork_frame.grid(row=3, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.enriched_label_text = ttk.Label(
@@ -319,15 +319,13 @@ class ToolkitApp(tk.Tk):
         self.status_label.config(text="Terminé.")
 
         if mode == "pipeline":
-            from dorks import ALL_TEMPLATES, DORK_CATEGORIES
-            tpl = len(ALL_TEMPLATES)
-            cats = ", ".join(DORK_CATEGORIES.keys())
+            from dorks import SQLI_HQ_TEMPLATES
+            tpl = len(SQLI_HQ_TEMPLATES)
             messagebox.showinfo(
                 "Terminé",
                 f"Preset : {self._current_preset().label}\n\n"
                 f"{kw_count} keywords :\n{enriched_path}\n\n"
-                f"{kw_count} × {tpl} templates ({cats})\n"
-                f"= {dork_count} dorks :\n{dorks_path}",
+                f"{kw_count} × {tpl} dorktypes = {dork_count} dorks SQL :\n{dorks_path}",
             )
         elif mode == "keywords":
             profile = get_lang_profile(self._current_lang())
@@ -338,14 +336,12 @@ class ToolkitApp(tk.Tk):
                 f"{kw_count} keywords enrichis :\n{enriched_path}",
             )
         else:
-            from dorks import ALL_TEMPLATES, DORK_CATEGORIES
-            tpl = len(ALL_TEMPLATES)
+            from dorks import SQLI_HQ_TEMPLATES
+            tpl = len(SQLI_HQ_TEMPLATES)
             kw_part = dork_count // tpl if tpl else dork_count
-            cats = ", ".join(DORK_CATEGORIES.keys())
             messagebox.showinfo(
                 "Terminé",
-                f"{kw_part} keywords × {tpl} templates ({cats})\n"
-                f"= {dork_count} dorks :\n{dorks_path}",
+                f"{kw_part} keywords × {tpl} dorktypes = {dork_count} dorks SQL HQ :\n{dorks_path}",
             )
 
     def _on_error(self, message: str) -> None:
