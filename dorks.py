@@ -1,66 +1,105 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-# Dork templates by vulnerability category.
+# UHQ SQLi dork templates — param + error combos, CMS-specific, CVE 2024-2025, SQL dumps.
+# Only templates with confirmed-error or known-vulnerable-endpoint signal.
 # {q} = keyword (quoted if multi-word by build_dork).
-# Sources: GHDB 2026, SecOps, Box Piper, CVE advisories, DorkFinder.
+# Sources: GHDB 2026, SecOps, NVD CVE advisories, WPScan, Box Piper 2026.
 
-# ── SQL Injection ──────────────────────────────────────────────────────────
 SQLI_TEMPLATES = [
-    # Tier 1: param + SQL error (highest signal)
-    'inurl:".php?id=" intext:"You have an error in your SQL syntax" {q}',
+    # ── Tier 1 : MySQL / MySQLi erreurs confirmées ────────────────────────
     'inurl:.php?id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"index.php?id=" intext:"Warning: mysql_num_rows()" {q}',
-    'inurl:index.php?id= intext:"mysql_fetch_array" {q}',
-    'inurl:"id=" intext:"MySQL Error: 1064" {q}',
-    'inurl:id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:id= intext:"mysql_fetch_array()" {q}',
-    'inurl:id= intext:"mysql_fetch_assoc()" {q}',
-    'inurl:id= intext:"Warning: mysql_query()" {q}',
-    'inurl:".php?catid=" intext:"Warning: mysql_fetch_array()" {q}',
-    'inurl:"page.php?id=" intext:"mysql_num_rows()" {q}',
-    'inurl:product.php?id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:article.php?id= intext:"mysql_fetch_assoc()" {q}',
-    'inurl:news.php?id= intext:"SQL syntax" {q}',
-    'inurl:category.php?id= intext:"SQL syntax" {q}',
-    'inurl:view.php?id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:advsearch.php?module= intext:"sql syntax" {q}',
-    'allinurl:index.php?id= intext:"You have an error in your SQL syntax" {q}',
-    'filetype:php inurl:id= intext:"You have an error in your SQL syntax" {q}',
-    'filetype:php inurl:id= intext:"mysql_fetch_array()" {q}',
-    # Tier 1: DBMS-specific errors
+    'inurl:.php?id= intext:"mysql_fetch_array() expects parameter 1" {q}',
+    'inurl:.php?id= intext:"mysql_num_rows() expects parameter 1" {q}',
+    'inurl:.php?id= intext:"mysql_fetch_assoc() expects parameter 1" {q}',
+    'inurl:.php?id= intext:"supplied argument is not a valid MySQL" {q}',
+    'inurl:.php?id= intext:"Warning: mysql_query()" {q}',
+    'inurl:.php?id= intext:"MySQL Error: 1064" {q}',
+    'inurl:.php?id= intext:"mysql_result(): supplied argument" {q}',
+    'inurl:.php?catid= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?cat= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?pid= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?item= intext:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?page= intext:"You have an error in your SQL syntax" {q}',
+    'intext:"Warning: mysqli_fetch_array()" {q}',
+    'intext:"Warning: mysqli_num_rows()" {q}',
+    'intext:"Warning: mysqli_fetch_assoc()" {q}',
+    'intext:"mysqli_fetch_array() expects parameter 1 to be mysqli_result" {q}',
+    'intext:"mysql_num_rows()" intext:"mysql_fetch_array()" intext:"mysql_query()" {q}',
+    'intext:"Error Executing Database Query." intext:"SQL" {q}',
+    # ── Tier 1 : PDO erreurs confirmées ───────────────────────────────────
+    'inurl:.php?id= intext:"SQLSTATE[42000]: Syntax error" {q}',
+    'intext:"PDOException: SQLSTATE" {q}',
+    'intext:"PDO::query(): SQLSTATE" {q}',
+    'intext:"SQLSTATE[HY000]" intext:"query" {q}',
+    # ── Tier 1 : PostgreSQL erreurs confirmées ────────────────────────────
     'inurl:.php?id= intext:"PostgreSQL query failed: ERROR" {q}',
+    'intext:"pg_query(): Query failed:" {q}',
+    'intext:"pg_exec(): Query failed:" {q}',
     'inurl:id= intext:"unterminated quoted string at or near" {q}',
+    'intext:"ERROR: syntax error at or near" {q}',
+    # ── Tier 1 : MSSQL / SQL Server erreurs confirmées ───────────────────
+    'inurl:id= intext:"Microsoft OLE DB Provider for SQL Server" {q}',
+    'inurl:id= intext:"Unclosed quotation mark after the character string" {q}',
+    'intext:"[Microsoft][ODBC SQL Server Driver]" {q}',
+    'intext:"[Microsoft][SQL Native Client][SQL Server]" {q}',
+    'intext:"Incorrect syntax near" intext:"SQL" {q}',
+    'intext:"Warning: mssql_query()" {q}',
+    'inurl:.asp?id= intext:"Syntax error" intext:"query" {q}',
+    'inurl:.aspx?id= intext:"SqlException" {q}',
+    # ── Tier 1 : Oracle erreurs confirmées ───────────────────────────────
     'inurl:id= intext:"ORA-01756: quoted string not properly terminated" {q}',
     'inurl:.php?id= intext:"ORA-00921: unexpected end of SQL command" {q}',
-    'inurl:id= intext:"Microsoft OLE DB Provider for SQL Server" {q}',
-    'inurl:id= intext:"Unclosed quotation mark" intext:"SQL Server" {q}',
-    'inurl:id= intext:"SQLSTATE" {q}',
-    'intext:"Error Executing Database Query." intext:"SQL" {q}',
-    'intext:"mysql_num_rows()" intext:"mysql_fetch_array()" intext:"mysql_query()" {q}',
-    'inurl:"error" intext:"SQL syntax" intext:"database error" {q}',
-    # Tier 2: CVE SQL 2026
+    'intext:"ORA-00933: SQL command not properly ended" {q}',
+    'intext:"ORA-00907: missing right parenthesis" {q}',
+    'intext:"ORA-00936: missing expression" {q}',
+    # ── Tier 1 : SQLite erreurs confirmées ───────────────────────────────
+    'intext:"SQLite3::query(): Unable to prepare statement" {q}',
+    'intext:"Warning: SQLite3::exec()" intext:"syntax error" {q}',
+    'intext:"SQLiteException: no such table" {q}',
+    # ── Tier 2 : CMS spécifiques — WordPress plugins vulnérables ─────────
+    'inurl:"/wp-content/plugins/" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"/wp-admin/admin-ajax.php" intext:"SQL" {q}',
+    'inurl:"?page_id=" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"?p=" intext:"You have an error in your SQL syntax" {q}',
+    # ── Tier 2 : CMS spécifiques — Joomla ────────────────────────────────
+    'inurl:"index.php?option=com_" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"index.php?option=com_content&view=article&id=" intext:"SQL" {q}',
+    'inurl:"index.php?option=com_virtuemart" intext:"SQL syntax" {q}',
+    # ── Tier 2 : CMS spécifiques — PrestaShop ────────────────────────────
+    'inurl:"index.php?id_product=" intext:"SQL syntax" {q}',
+    'inurl:"index.php?id_category=" intext:"SQL syntax" {q}',
+    'inurl:"index.php?id_manufacturer=" intext:"SQL" {q}',
+    # ── Tier 2 : CMS spécifiques — OpenCart ──────────────────────────────
+    'inurl:"index.php?route=product/product&product_id=" intext:"SQL" {q}',
+    'inurl:"index.php?route=product/category&path=" intext:"SQL syntax" {q}',
+    # ── Tier 2 : CMS spécifiques — Magento ───────────────────────────────
+    'inurl:"/catalog/product/view/id/" intext:"SQL syntax" {q}',
+    'inurl:"/catalogsearch/result/?q=" intext:"SQL" {q}',
+    # ── Tier 2 : CMS spécifiques — Drupal / divers ───────────────────────
+    'inurl:"?q=node/" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"view.php?id=" intext:"You have an error in your SQL syntax" {q}',
+    'inurl:"item.php?id=" intext:"mysql" {q}',
+    # ── Tier 3 : CVE 2024-2025 — endpoints précis ────────────────────────
+    # CVE-2024-27956 — WP Automatic plugin SQLi (non authentifié)
+    'inurl:"/wp-content/plugins/wp-automatic/" {q}',
+    # CVE-2024-4345 — Startklar Elementor Addons SQLi
+    'inurl:"/wp-content/plugins/startklar-elemetoraddons/" {q}',
+    # CVE-2024-3808 — Product Configurator for WooCommerce SQLi
+    'inurl:"/wp-content/plugins/woocommerce-product-configurator/" {q}',
+    # CVE-2025-2025 — CKAN datastore search SQL (GHDB 2026)
     'inurl:"/api/action/datastore_search_sql" {q}',
-    'inurl:"/user/login?_format=json" intext:"SQLSTATE" {q}',
-    'inurl:"/jsonapi/node/" intext:"SQL" {q}',
-    'inurl:"index.php?option=com_acym" intext:"sql" {q}',
-    # Tier 2: classic GHDB PHP pages
-    "inurl:index.php?id= {q}",
-    "inurl:product.php?id= {q}",
-    "inurl:article.php?id= {q}",
-    "inurl:trainers.php?id= {q}",
-    "inurl:buy.php?category= {q}",
-    "inurl:games.php?id= {q}",
-    "inurl:sql.php?id= {q}",
-    "inurl:page.php?file= {q}",
-    # Tier 3: SQL dumps / exposed files
+    # CVE-2024-28255 — OpenMetadata SQLi
+    'inurl:"/api/v1/search/query" intext:"sqlException" {q}',
+    # Drupal 7 SA-CORE-2014-005 (Drupalgeddon) — toujours présent
+    'inurl:"?q=node&destination=node" intext:"SQL" {q}',
+    # ── Tier 4 : dumps SQL exposés ────────────────────────────────────────
     'filetype:sql intext:"phpMyAdmin SQL Dump" {q}',
     'filetype:sql "INSERT INTO" intext:"password" {q}',
     'ext:sql inurl:backup intext:"CREATE TABLE" {q}',
     'intitle:"index of" filetype:sql {q}',
-    # Tier 3: condensed param combos
-    'inurl:id= | inurl:cat= | inurl:page= intext:"SQL syntax" {q}',
-    'inurl:id= | inurl:pid= | inurl:category= intext:"database error" {q}',
+    'filetype:sql "INSERT INTO" intext:"users" {q}',
+    'intitle:"index of" "*.sql" {q}',
 ]
 
 # Aliases
