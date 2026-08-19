@@ -34,8 +34,8 @@ TRENDS_GEO: dict[str, str] = {
     "it": "IT", "ru": "RU", "ar": "SA", "nl": "NL", "pl": "PL",
     "tr": "TR", "ja": "JP", "ko": "KR", "zh-cn": "CN", "zh-tw": "TW",
 }
-TRENDS_BATCH = 5    # limite de l'API Trends
-TRENDS_DELAY = 1.2  # secondes entre batches pour éviter le rate-limit
+TRENDS_BATCH = 1    # 1 keyword/appel = score absolu 0-100 (pas relatif au batch)
+TRENDS_DELAY = 1.2  # secondes entre appels pour éviter le rate-limit
 
 DEFAULT_DELAY = 0.15
 MIN_WORDS = 1
