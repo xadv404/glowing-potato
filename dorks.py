@@ -57,13 +57,6 @@ SQLI_TEMPLATES = [
     'intext:"SQLite3::query(): Unable to prepare statement" {q}',
     'intext:"Warning: SQLite3::exec()" intext:"syntax error" {q}',
     'intext:"SQLiteException: no such table" {q}',
-    # ── Tier 2 : dumps SQL exposés ────────────────────────────────────────
-    'filetype:sql intext:"phpMyAdmin SQL Dump" {q}',
-    'filetype:sql "INSERT INTO" intext:"password" {q}',
-    'ext:sql inurl:backup intext:"CREATE TABLE" {q}',
-    'intitle:"index of" filetype:sql {q}',
-    'filetype:sql "INSERT INTO" intext:"users" {q}',
-    'intitle:"index of" "*.sql" {q}',
 ]
 
 # Aliases
