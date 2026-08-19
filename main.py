@@ -40,10 +40,10 @@ TRENDS_WORKERS = 3   # workers parallèles (chacun son TrendReq, starts décalé
 
 DEFAULT_DELAY = 0.05
 MIN_WORDS = 1
-MAX_WORDS = 5
+MAX_WORDS = 3
 MAX_PER_PREFIX = 5
 MAX_PER_ROOT = 4
-MAX_PER_SEED = 40
+MAX_PER_SEED = 30
 MAX_MODIFIERS = 8
 MAX_WORKERS = 4    # workers HTTP par seed
 SEED_WORKERS = 5   # seeds traitées en parallèle
