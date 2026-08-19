@@ -26,9 +26,9 @@ QUALITY_PRESETS: dict[str, QualityPreset] = {
             "Peu de keywords par seed, dédup forte. "
             "Idéal pour listes ciblées."
         ),
-        max_per_seed=15,
-        max_per_prefix=2,
-        max_per_root=1,
+        max_per_seed=20,
+        max_per_prefix=3,
+        max_per_root=3,
     ),
     "balanced": QualityPreset(
         id="balanced",
@@ -37,9 +37,9 @@ QUALITY_PRESETS: dict[str, QualityPreset] = {
             "Bon compromis qualité / volume. "
             "Filtrage thème dynamique basé sur les seeds."
         ),
-        max_per_seed=25,
-        max_per_prefix=3,
-        max_per_root=2,
+        max_per_seed=40,
+        max_per_prefix=5,
+        max_per_root=4,
     ),
     "permissive": QualityPreset(
         id="permissive",
@@ -47,9 +47,9 @@ QUALITY_PRESETS: dict[str, QualityPreset] = {
         description=(
             "Plus de keywords retenus par seed."
         ),
-        max_per_seed=35,
-        max_per_prefix=4,
-        max_per_root=2,
+        max_per_seed=60,
+        max_per_prefix=7,
+        max_per_root=5,
     ),
     "volume": QualityPreset(
         id="volume",
@@ -57,9 +57,9 @@ QUALITY_PRESETS: dict[str, QualityPreset] = {
         description=(
             "Limites assouplies pour enrichir de grosses listes de seeds."
         ),
-        max_per_seed=45,
-        max_per_prefix=5,
-        max_per_root=3,
+        max_per_seed=80,
+        max_per_prefix=9,
+        max_per_root=6,
     ),
 }
 

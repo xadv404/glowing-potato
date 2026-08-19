@@ -40,9 +40,9 @@ TRENDS_DELAY = 1.2  # secondes entre appels pour éviter le rate-limit
 DEFAULT_DELAY = 0.15
 MIN_WORDS = 1
 MAX_WORDS = 3
-MAX_PER_PREFIX = 3
-MAX_PER_ROOT = 2
-MAX_PER_SEED = 25
+MAX_PER_PREFIX = 5
+MAX_PER_ROOT = 4
+MAX_PER_SEED = 40
 MAX_MODIFIERS = 8
 MAX_WORKERS = 8
 
@@ -424,6 +424,9 @@ def _expand_query(
     return query, scored, is_direct
 
 
+ALPHA_CHARS = list("abcdefghijklmnopqrstuvwxyz")
+
+
 def expand_seed(
     seed: str,
     modifiers: list[str],
@@ -431,16 +434,19 @@ def expand_seed(
     delay: float,
 ) -> tuple[dict[str, float], set[str]]:
     """
-    Expand one seed by querying all sources for seed + modifier combinations.
+    Expand one seed via modifier queries + alphabetical expansion (seed + a-z).
+    Alpha expansion forces Google to return short completions even for long seeds.
     Uses ThreadPoolExecutor for concurrent fetching.
     Returns (scored_keywords dict, direct_keywords set).
     """
     seed_words = set(normalize_keyword(seed, lang).split())
-    queries = [seed] + [
+    modifier_queries = [
         f"{seed} {mod}"
         for mod in modifiers
         if mod not in seed_words
     ]
+    alpha_queries = [f"{seed} {ch}" for ch in ALPHA_CHARS]
+    queries = [seed] + modifier_queries + alpha_queries
 
     all_scores: dict[str, float] = {}
     direct: set[str] = set()
