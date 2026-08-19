@@ -34,8 +34,9 @@ TRENDS_GEO: dict[str, str] = {
     "it": "IT", "ru": "RU", "ar": "SA", "nl": "NL", "pl": "PL",
     "tr": "TR", "ja": "JP", "ko": "KR", "zh-cn": "CN", "zh-tw": "TW",
 }
-TRENDS_BATCH = 1    # 1 keyword/appel = score absolu 0-100 (pas relatif au batch)
-TRENDS_DELAY = 1.2  # secondes entre appels pour éviter le rate-limit
+TRENDS_BATCH = 5      # 5 keywords/appel — suffisant pour détecter volume=0
+TRENDS_DELAY = 1.2   # secondes entre appels par worker
+TRENDS_WORKERS = 3   # workers parallèles (chacun son TrendReq, starts décalés)
 
 DEFAULT_DELAY = 0.15
 MIN_WORDS = 1
@@ -475,30 +476,21 @@ def expand_seed(
     return all_scores, direct
 
 
-def score_with_trends(
-    keywords: set[str],
-    lang: str = DEFAULT_LANG,
+def _trends_worker(
+    batches: list[list[str]],
+    geo: str,
+    hl: str,
+    worker_id: int,
 ) -> dict[str, int]:
-    """
-    Interroge Google Trends pour chaque keyword et retourne son score moyen
-    sur 12 mois (0–100). Score 0 = aucun volume de recherche détecté.
-    Traitement par batch de 5 (limite API). Échoue silencieusement.
-    """
-    if not TRENDS_ENABLED or not keywords:
-        return {}
-
-    geo = TRENDS_GEO.get(normalize_lang(lang), "")
-    hl = get_google_hl(lang)
+    """Un worker Trends : traite sa liste de batches avec son propre TrendReq."""
     scores: dict[str, int] = {}
-    kw_list = list(keywords)
-
+    time.sleep(worker_id * (TRENDS_DELAY / TRENDS_WORKERS))  # décalage du start
     try:
         pytrends = _TrendReq(hl=hl, tz=0, timeout=(10, 25))
     except Exception:
-        return {}
+        return {kw: 0 for batch in batches for kw in batch}
 
-    for i in range(0, len(kw_list), TRENDS_BATCH):
-        batch = kw_list[i : i + TRENDS_BATCH]
+    for batch in batches:
         try:
             pytrends.build_payload(batch, cat=0, timeframe="today 12-m", geo=geo)
             data = pytrends.interest_over_time()
@@ -512,6 +504,44 @@ def score_with_trends(
             for kw in batch:
                 scores[kw] = 0
         time.sleep(TRENDS_DELAY)
+
+    return scores
+
+
+def score_with_trends(
+    keywords: set[str],
+    lang: str = DEFAULT_LANG,
+) -> dict[str, int]:
+    """
+    Valide le volume de recherche via Google Trends.
+    Score 0 = volume nul → keyword éliminé.
+    TRENDS_WORKERS workers parallèles × TRENDS_BATCH keywords/appel.
+    """
+    if not TRENDS_ENABLED or not keywords:
+        return {}
+
+    geo = TRENDS_GEO.get(normalize_lang(lang), "")
+    hl = get_google_hl(lang)
+    kw_list = list(keywords)
+
+    # Découper en batches puis répartir entre workers
+    all_batches = [
+        kw_list[i : i + TRENDS_BATCH]
+        for i in range(0, len(kw_list), TRENDS_BATCH)
+    ]
+    worker_batches: list[list[list[str]]] = [[] for _ in range(TRENDS_WORKERS)]
+    for idx, batch in enumerate(all_batches):
+        worker_batches[idx % TRENDS_WORKERS].append(batch)
+
+    scores: dict[str, int] = {}
+    with ThreadPoolExecutor(max_workers=TRENDS_WORKERS) as executor:
+        futures = [
+            executor.submit(_trends_worker, wb, geo, hl, wid)
+            for wid, wb in enumerate(worker_batches)
+            if wb
+        ]
+        for future in as_completed(futures):
+            scores.update(future.result())
 
     return scores
 
