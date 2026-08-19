@@ -460,8 +460,9 @@ def fetch_multi_source(
     lang: str = DEFAULT_LANG,
 ) -> dict[str, float]:
     """
-    Fetch Google + DuckDuckGo autocomplete en parallèle.
+    Fetch Google + DuckDuckGo autocomplete séquentiellement.
     Score = Σ(1 + 1/rank) par source — les keywords vus par les deux remontent.
+    La parallélisation se fait au niveau des seeds (SEED_WORKERS), pas ici.
     """
     scores: dict[str, float] = {}
 
@@ -469,11 +470,8 @@ def fetch_multi_source(
         for rank, kw in enumerate(suggestions):
             scores[kw] = scores.get(kw, 0.0) + 1.0 + 1.0 / (rank + 1)
 
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        g_future = ex.submit(fetch_suggestions_google, query, lang)
-        d_future = ex.submit(fetch_suggestions_ddg, query, lang)
-        add_source(g_future.result())
-        add_source(d_future.result())
+    add_source(fetch_suggestions_google(query, lang))
+    add_source(fetch_suggestions_ddg(query, lang))
 
     return scores
 
