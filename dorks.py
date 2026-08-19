@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-# UHQ SQLi dork templates — param + error combos, CMS-specific, CVE 2024-2025, SQL dumps.
-# Only templates with confirmed-error or known-vulnerable-endpoint signal.
+import requests
+
 # {q} = keyword (quoted if multi-word by build_dork).
-# Sources: GHDB 2026, SecOps, NVD CVE advisories, WPScan, Box Piper 2026.
+# Sources: GHDB 2026, SecOps, NVD CVE advisories, WPScan.
 
 SQLI_TEMPLATES = [
-    # ── Tier 1 : MySQL / MySQLi erreurs confirmées ────────────────────────
+    # ── MySQL / MySQLi erreurs confirmées ─────────────────────────────────
     'inurl:.php?id= intext:"You have an error in your SQL syntax" {q}',
     'inurl:.php?id= intext:"mysql_fetch_array() expects parameter 1" {q}',
     'inurl:.php?id= intext:"mysql_num_rows() expects parameter 1" {q}',
@@ -34,18 +37,18 @@ SQLI_TEMPLATES = [
     'intext:"mysqli_fetch_array() expects parameter 1 to be mysqli_result" {q}',
     'intext:"mysql_num_rows()" intext:"mysql_fetch_array()" intext:"mysql_query()" {q}',
     'intext:"Error Executing Database Query." intext:"SQL" {q}',
-    # ── Tier 1 : PDO erreurs confirmées ───────────────────────────────────
+    # ── PDO erreurs confirmées ─────────────────────────────────────────────
     'inurl:.php?id= intext:"SQLSTATE[42000]: Syntax error" {q}',
     'intext:"PDOException: SQLSTATE" {q}',
     'intext:"PDO::query(): SQLSTATE" {q}',
     'intext:"SQLSTATE[HY000]" intext:"query" {q}',
-    # ── Tier 1 : PostgreSQL erreurs confirmées ────────────────────────────
+    # ── PostgreSQL erreurs confirmées ──────────────────────────────────────
     'inurl:.php?id= intext:"PostgreSQL query failed: ERROR" {q}',
     'intext:"pg_query(): Query failed:" {q}',
     'intext:"pg_exec(): Query failed:" {q}',
     'inurl:id= intext:"unterminated quoted string at or near" {q}',
     'intext:"ERROR: syntax error at or near" {q}',
-    # ── Tier 1 : MSSQL / SQL Server erreurs confirmées ───────────────────
+    # ── MSSQL / SQL Server erreurs confirmées ──────────────────────────────
     'inurl:id= intext:"Microsoft OLE DB Provider for SQL Server" {q}',
     'inurl:id= intext:"Unclosed quotation mark after the character string" {q}',
     'intext:"[Microsoft][ODBC SQL Server Driver]" {q}',
@@ -54,19 +57,79 @@ SQLI_TEMPLATES = [
     'intext:"Warning: mssql_query()" {q}',
     'inurl:.asp?id= intext:"Syntax error" intext:"query" {q}',
     'inurl:.aspx?id= intext:"SqlException" {q}',
-    # ── Tier 1 : Oracle erreurs confirmées ───────────────────────────────
+    # ── Oracle erreurs confirmées ──────────────────────────────────────────
     'inurl:id= intext:"ORA-01756: quoted string not properly terminated" {q}',
     'inurl:.php?id= intext:"ORA-00921: unexpected end of SQL command" {q}',
     'intext:"ORA-00933: SQL command not properly ended" {q}',
     'intext:"ORA-00907: missing right parenthesis" {q}',
     'intext:"ORA-00936: missing expression" {q}',
-    # ── Tier 1 : SQLite erreurs confirmées ───────────────────────────────
+    # ── SQLite erreurs confirmées ──────────────────────────────────────────
     'intext:"SQLite3::query(): Unable to prepare statement" {q}',
     'intext:"Warning: SQLite3::exec()" intext:"syntax error" {q}',
     'intext:"SQLiteException: no such table" {q}',
 ]
 
-# Aliases
+LFI_TEMPLATES = [
+    # ── LFI : /etc/passwd leak confirmé ───────────────────────────────────
+    'inurl:.php?file= intext:"root:x:0:0" {q}',
+    'inurl:.php?page= intext:"root:x:0:0" {q}',
+    'inurl:.php?path= intext:"root:x:0:0" {q}',
+    'inurl:.php?lang= intext:"root:x:0:0" {q}',
+    'inurl:.php?doc= intext:"root:x:0:0" {q}',
+    'inurl:.php?template= intext:"root:x:0:0" {q}',
+    # ── LFI : erreurs PHP include/require ─────────────────────────────────
+    'inurl:.php?file= intext:"failed to open stream: No such file" {q}',
+    'inurl:.php?include= intext:"Failed opening required" {q}',
+    'inurl:.php?dir= intext:"Warning: include(" {q}',
+    'inurl:.php?page= intext:"Warning: require(" {q}',
+    'inurl:.php?template= intext:"Warning: require_once(" {q}',
+    # ── LFI : Windows / IIS ───────────────────────────────────────────────
+    'inurl:.php?file= intext:"[boot loader]" {q}',
+    'inurl:?file= intext:"Volume Serial Number" {q}',
+    'inurl:.asp?file= intext:"root:x:0:0" {q}',
+]
+
+ADMIN_TEMPLATES = [
+    # ── Panneaux admin exposés ─────────────────────────────────────────────
+    'inurl:/admin/login.php intitle:"Login" {q}',
+    'inurl:/admin/index.php intitle:"Admin" {q}',
+    'inurl:/administrator/index.php intitle:"Administration" {q}',
+    'inurl:/wp-login.php intext:"Lost your password" {q}',
+    'inurl:/wp-admin/admin-ajax.php {q}',
+    'intitle:"phpMyAdmin" inurl:/phpmyadmin/index.php {q}',
+    'intitle:"Plesk" inurl:/login_up.php {q}',
+    'intitle:"cPanel" inurl:2083 {q}',
+    'intitle:"Webmin" inurl:10000 {q}',
+    'inurl:/admin/login intext:"Username" intext:"Password" {q}',
+    'inurl:"/panel/login" intitle:"Admin Panel" {q}',
+    'inurl:"/controlpanel" intitle:"Control Panel" {q}',
+    'inurl:"/dashboard" intext:"admin" intext:"password" {q}',
+    'intitle:"Django administration" {q}',
+    'intitle:"Laravel" intext:"SQLSTATE" {q}',
+]
+
+SENSITIVE_TEMPLATES = [
+    # ── Fichiers sensibles exposés ────────────────────────────────────────
+    'filetype:env intext:"DB_PASSWORD" {q}',
+    'filetype:env intext:"APP_SECRET" {q}',
+    'intitle:"index of" "wp-config.php" {q}',
+    'intitle:"index of" "wp-config.php.bak" {q}',
+    'intitle:"index of" ".git" {q}',
+    'inurl:/.git/config {q}',
+    'filetype:sql intext:"INSERT INTO" intext:"password" {q}',
+    'filetype:sql intext:"CREATE TABLE" intext:"users" {q}',
+    'intitle:"index of" "database.yml" {q}',
+    'filetype:xml intext:"password" inurl:config {q}',
+    'filetype:bak inurl:config {q}',
+    'filetype:log intext:"password" inurl:/var/log {q}',
+    'intitle:"index of" "credentials" {q}',
+    'intitle:"index of" ".env" {q}',
+    'inurl:"backup" filetype:zip {q}',
+]
+
+ALL_TEMPLATES = SQLI_TEMPLATES + LFI_TEMPLATES + ADMIN_TEMPLATES + SENSITIVE_TEMPLATES
+
+# Aliases pour compat
 SQLI_HQ_TEMPLATES = SQLI_TEMPLATES
 SQLI_SQL_TEMPLATES = SQLI_TEMPLATES
 
@@ -106,12 +169,70 @@ def build_dork(keyword: str, template: str, domain: str | None = None) -> str:
     return dork
 
 
-def generate_dorks(keywords: list[str], domain: str | None = None) -> list[str]:
+def generate_dorks(
+    keywords: list[str],
+    domain: str | None = None,
+    templates: list[str] | None = None,
+) -> list[str]:
+    tpl = templates if templates is not None else ALL_TEMPLATES
     dorks: list[str] = []
     for keyword in keywords:
-        for template in SQLI_TEMPLATES:
+        for template in tpl:
             dorks.append(build_dork(keyword, template, domain))
     return dorks
+
+
+def _check_one(dork: str, delay: float) -> tuple[str, bool]:
+    """Vérifie via DuckDuckGo HTML si un dork retourne au moins un résultat."""
+    time.sleep(delay)
+    url = "https://html.duckduckgo.com/html/"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    try:
+        resp = requests.get(url, params={"q": dork}, headers=headers, timeout=12)
+        has_results = 'class="result__a"' in resp.text or 'class="results_links"' in resp.text
+        return dork, has_results
+    except Exception:
+        return dork, True  # erreur réseau → on garde
+
+
+def validate_dorks(
+    dorks: list[str],
+    max_workers: int = 4,
+    delay: float = 1.0,
+) -> list[str]:
+    """
+    Filtre les dorks en vérifiant que DuckDuckGo retourne ≥ 1 résultat.
+    Utile pour éliminer les templates qui ne matchent rien.
+    Retourne les dorks valides (avec résultats).
+    """
+    valid: list[str] = []
+    args = [(d, delay * i / max_workers) for i, d in enumerate(dorks)]
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_check_one, d, offset): d for d, offset in args}
+        for future in as_completed(futures):
+            dork, has_results = future.result()
+            if has_results:
+                valid.append(dork)
+
+    return valid
+
+
+def validate_templates(
+    sample_keyword: str,
+    templates: list[str] | None = None,
+    max_workers: int = 5,
+    delay: float = 0.8,
+) -> list[str]:
+    """
+    Vérifie chaque template avec un keyword de référence.
+    Retourne les templates qui donnent ≥ 1 résultat sur DuckDuckGo.
+    Utile pour élaguer les templates morts avant la génération en masse.
+    """
+    tpl = templates if templates is not None else ALL_TEMPLATES
+    test_dorks = [build_dork(sample_keyword, t) for t in tpl]
+    valid_dorks = set(validate_dorks(test_dorks, max_workers=max_workers, delay=delay))
+    return [t for t, d in zip(tpl, test_dorks) if d in valid_dorks]
 
 
 def save_dorks(dorks: list[str], output_path: Path) -> None:
@@ -122,19 +243,34 @@ def run_generator(
     input_path: Path,
     output_path: Path | None = None,
     domain: str | None = None,
+    templates: list[str] | None = None,
+    validate: bool = False,
 ) -> tuple[int, Path]:
     if output_path is None:
         stem = input_path.stem.removesuffix("_keywords")
         output_path = input_path.with_name(f"{stem}_dorks.txt")
 
+    tpl = templates if templates is not None else ALL_TEMPLATES
     keywords = load_lines(input_path)
-    dorks = generate_dorks(keywords, domain=domain)
+    dorks = generate_dorks(keywords, domain=domain, templates=tpl)
+
+    if validate:
+        print(f"Validation DuckDuckGo : {len(dorks)} dorks en cours…")
+        dorks = validate_dorks(dorks)
+        print(f"Dorks valides : {len(dorks)}")
+
     save_dorks(dorks, output_path)
 
-    template_count = len(SQLI_TEMPLATES)
+    tpl_counts = {
+        "SQLi": len(SQLI_TEMPLATES),
+        "LFI": len(LFI_TEMPLATES),
+        "Admin": len(ADMIN_TEMPLATES),
+        "Sensitive": len(SENSITIVE_TEMPLATES),
+    }
+    tpl_summary = " + ".join(f"{v} {k}" for k, v in tpl_counts.items())
     print(
-        f"{len(keywords)} keywords × {template_count} dorktypes "
-        f"= {len(dorks)} dorks SQL HQ"
+        f"{len(keywords)} keywords × {len(tpl)} templates ({tpl_summary})"
+        f" = {len(dorks)} dorks"
     )
     if domain:
         print(f"Domaine : {domain}")

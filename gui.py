@@ -319,13 +319,13 @@ class ToolkitApp(tk.Tk):
         self.status_label.config(text="Terminé.")
 
         if mode == "pipeline":
-            from dorks import SQLI_HQ_TEMPLATES
-            tpl = len(SQLI_HQ_TEMPLATES)
+            from dorks import ALL_TEMPLATES
+            tpl = len(ALL_TEMPLATES)
             messagebox.showinfo(
                 "Terminé",
                 f"Preset : {self._current_preset().label}\n\n"
                 f"{kw_count} keywords :\n{enriched_path}\n\n"
-                f"{kw_count} × {tpl} dorktypes = {dork_count} dorks SQL :\n{dorks_path}",
+                f"{kw_count} × {tpl} dorktypes = {dork_count} dorks :\n{dorks_path}",
             )
         elif mode == "keywords":
             profile = get_lang_profile(self._current_lang())
@@ -336,12 +336,12 @@ class ToolkitApp(tk.Tk):
                 f"{kw_count} keywords enrichis :\n{enriched_path}",
             )
         else:
-            from dorks import SQLI_HQ_TEMPLATES
-            tpl = len(SQLI_HQ_TEMPLATES)
+            from dorks import ALL_TEMPLATES
+            tpl = len(ALL_TEMPLATES)
             kw_part = dork_count // tpl if tpl else dork_count
             messagebox.showinfo(
                 "Terminé",
-                f"{kw_part} keywords × {tpl} dorktypes = {dork_count} dorks SQL HQ :\n{dorks_path}",
+                f"{kw_part} keywords × {tpl} dorktypes = {dork_count} dorks :\n{dorks_path}",
             )
 
     def _on_error(self, message: str) -> None:

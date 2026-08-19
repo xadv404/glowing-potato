@@ -48,6 +48,19 @@ MAX_MODIFIERS = 8
 MAX_WORKERS = 5    # workers HTTP par seed
 SEED_WORKERS = 3   # seeds traitées en parallèle
 
+EN_NOISE_MARKERS: frozenset[str] = frozenset({
+    "is", "are", "was", "were", "the", "this", "that",
+    "our", "their", "we", "you", "your", "my", "its",
+    "he", "she", "they", "do", "does", "did",
+    "how", "which", "what", "where", "when", "why",
+    "not", "but", "and", "or", "if", "so", "yet",
+    "an", "from", "with", "by", "at", "into",
+    "best", "new", "for", "all", "right", "will",
+    "can", "has", "have", "had", "been", "get", "got",
+    "more", "good", "great", "now", "any", "no",
+    "popular", "free", "online", "download", "watch",
+})
+
 CJK_RANGES = (
     (0x3040, 0x30FF),  # Hiragana + Katakana
     (0x4E00, 0x9FFF),  # CJK Unified
@@ -79,6 +92,40 @@ def normalize_keyword(text: str, lang: str) -> str:
     if is_cjk_lang(lang):
         return text.strip()
     return text.strip().lower()
+
+
+def decompose_seed(seed: str, lang: str) -> list[str]:
+    """
+    Pour un seed de 3+ mots, génère les bigrammes adjacents + mots significatifs.
+    Permet à Google d'auto-compléter chaque composant du seed.
+    """
+    profile = get_lang_profile(lang)
+    stopwords = profile.stopwords
+    cjk = is_cjk_lang(lang)
+    words = normalize_keyword(seed, lang).split()
+    if len(words) < 3:
+        return []
+    subs: list[str] = []
+    # bigrammes consécutifs
+    for i in range(len(words) - 1):
+        subs.append(f"{words[i]} {words[i + 1]}")
+    # mots significatifs seuls (non-stopword, ≥ 3 chars)
+    for w in words:
+        if w not in stopwords and len(w) >= (2 if cjk else 3):
+            subs.append(w)
+    return list(dict.fromkeys(subs))  # dedupe, preserve order
+
+
+def expand_seed_list(seeds: list[str], lang: str) -> list[str]:
+    """Ajoute les sous-seeds issus des seeds ≥ 3 mots à la liste."""
+    all_seeds = list(seeds)
+    seen = set(normalize_keyword(s, lang) for s in seeds)
+    for seed in seeds:
+        for sub in decompose_seed(seed, lang):
+            if sub not in seen:
+                all_seeds.append(sub)
+                seen.add(sub)
+    return all_seeds
 
 
 def build_theme_profile(seeds: list[str], lang: str = DEFAULT_LANG) -> ThemeProfile:
@@ -163,6 +210,12 @@ def is_valid_form(keyword: str, lang: str = DEFAULT_LANG) -> bool:
     min_tail = 1 if is_cjk_lang(lang) else 2
     if len(words[-1]) <= min_tail:
         return False
+
+    # Si la langue cible n'est pas EN, rejeter les keywords avec marqueurs EN
+    if lang != "en" and not is_cjk_lang(lang):
+        words_set = set(keyword.split())
+        if words_set & EN_NOISE_MARKERS:
+            return False
 
     return True
 
@@ -575,6 +628,7 @@ def scrape_keywords(
     profile = get_lang_profile(lang)
     theme_profile = build_theme_profile(input_keywords, lang)
     modifiers = build_dynamic_modifiers(input_keywords, profile, lang)
+    input_keywords = expand_seed_list(input_keywords, lang)
     all_keywords: set[str] = set()
     all_direct: set[str] = set()
     all_scores: dict[str, float] = {}
@@ -588,6 +642,7 @@ def scrape_keywords(
     print(
         f"Source : {', '.join(sources)} | "
         f"langue : {profile.label}\n"
+        f"Seeds : {len(input_keywords)} (après décomposition)\n"
         f"Limites : {max_per_seed}/seed, {max_per_prefix}/préfixe, {max_per_root}/racine\n"
         f"Thème : {len(theme_profile.seed_words)} mots, "
         f"{len(theme_profile.seed_bigrams)} bigrammes\n"
