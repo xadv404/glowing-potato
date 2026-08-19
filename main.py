@@ -45,7 +45,8 @@ MAX_PER_PREFIX = 5
 MAX_PER_ROOT = 4
 MAX_PER_SEED = 40
 MAX_MODIFIERS = 8
-MAX_WORKERS = 8
+MAX_WORKERS = 5    # workers HTTP par seed
+SEED_WORKERS = 3   # seeds traitées en parallèle
 
 CJK_RANGES = (
     (0x3040, 0x30FF),  # Hiragana + Katakana
@@ -546,6 +547,23 @@ def score_with_trends(
     return scores
 
 
+def _scrape_one_seed(
+    args: tuple,
+) -> tuple[str, dict[str, float], set[str], set[str]]:
+    seed, modifiers, lang, delay, theme_profile, max_per_seed, max_per_prefix = args
+    scored, direct = expand_seed(seed, modifiers, lang, delay)
+    cleaned = filter_keywords(
+        scored,
+        seed=seed,
+        theme_profile=theme_profile,
+        direct=direct,
+        lang=lang,
+        max_per_seed=max_per_seed,
+        max_per_prefix=max_per_prefix,
+    )
+    return seed, scored, direct, cleaned
+
+
 def scrape_keywords(
     input_keywords: list[str],
     lang: str = DEFAULT_LANG,
@@ -576,31 +594,33 @@ def scrape_keywords(
         f"Modifiers ({len(modifiers)}) : {', '.join(modifiers)}\n"
     )
 
-    for index, seed in enumerate(input_keywords, start=1):
-        print(f"[{index}/{len(input_keywords)}] {seed}")
-        scored, direct = expand_seed(seed, modifiers, lang, delay)
-        total_raw += len(scored)
-        all_direct.update(direct)
+    args_list = [
+        (seed, modifiers, lang, delay, theme_profile, max_per_seed, max_per_prefix)
+        for seed in input_keywords
+    ]
+    done = 0
 
-        for kw, score in scored.items():
-            all_scores[kw] = all_scores.get(kw, 0.0) + score
-
-        cleaned = filter_keywords(
-            scored,
-            seed=seed,
-            theme_profile=theme_profile,
-            direct=direct,
-            lang=lang,
-            max_per_seed=max_per_seed,
-            max_per_prefix=max_per_prefix,
-        )
-        total_filtered += len(cleaned)
-        all_keywords.update(cleaned)
-
-        print(
-            f"  => {len(scored)} brutes -> {len(cleaned)} retenues "
-            f"({len(all_keywords)} uniques au total)\n"
-        )
+    with ThreadPoolExecutor(max_workers=SEED_WORKERS) as seed_executor:
+        future_to_idx = {
+            seed_executor.submit(_scrape_one_seed, args): i
+            for i, args in enumerate(args_list)
+        }
+        for future in as_completed(future_to_idx):
+            i = future_to_idx[future]
+            seed_orig = input_keywords[i]
+            done += 1
+            seed, scored, direct, cleaned = future.result()
+            total_raw += len(scored)
+            all_direct.update(direct)
+            for kw, score in scored.items():
+                all_scores[kw] = all_scores.get(kw, 0.0) + score
+            total_filtered += len(cleaned)
+            all_keywords.update(cleaned)
+            print(
+                f"[{done}/{len(input_keywords)}] {seed_orig} "
+                f"=> {len(scored)} brutes -> {len(cleaned)} retenues "
+                f"({len(all_keywords)} uniques)\n"
+            )
 
     before_global = len(all_keywords)
     all_keywords = global_dedupe(
