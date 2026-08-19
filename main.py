@@ -28,8 +28,6 @@ from config import (
 )
 
 AUTOCOMPLETE_GOOGLE_URL = "https://suggestqueries.google.com/complete/search"
-BING_URL = "https://api.bing.microsoft.com/v7.0/Suggestions"
-BING_API_KEY = os.environ.get("BING_API_KEY", "")
 TRENDS_ENABLED = _PYTRENDS_AVAILABLE and os.environ.get("TRENDS_ENABLED", "1") != "0"
 TRENDS_GEO: dict[str, str] = {
     "fr": "FR", "en": "US", "es": "ES", "de": "DE", "pt": "BR",
@@ -377,37 +375,6 @@ def fetch_suggestions_google(query: str, lang: str = DEFAULT_LANG) -> list[str]:
 
 
 
-def fetch_suggestions_bing(query: str, lang: str = DEFAULT_LANG) -> list[str]:
-    if not BING_API_KEY:
-        return []
-    hl = get_google_hl(lang)
-    params = {"q": query, "mkt": hl, "count": 8}
-    headers = {
-        "Ocp-Apim-Subscription-Key": BING_API_KEY,
-        "User-Agent": "Mozilla/5.0",
-    }
-
-    for attempt in range(4):
-        try:
-            response = requests.get(BING_URL, params=params, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            groups = data.get("suggestionGroups", [])
-            results = []
-            for group in groups:
-                for item in group.get("searchSuggestions", []):
-                    text = item.get("displayText", "")
-                    if text:
-                        results.append(normalize_keyword(text, lang))
-            return results
-        except Exception as exc:
-            if attempt == 3:
-                return []  # Bing is optional
-            wait = 2 ** attempt
-            time.sleep(wait)
-
-    return []
-
 
 def fetch_suggestions(query: str, lang: str = DEFAULT_LANG) -> list[str]:
     """Fallback single-source fetch (Google only) for backward compat."""
@@ -432,10 +399,6 @@ def fetch_multi_source(
 
     google_results = fetch_suggestions_google(query, lang)
     add_source(google_results)
-
-    if BING_API_KEY:
-        bing_results = fetch_suggestions_bing(query, lang)
-        add_source(bing_results)
 
     return scores
 
@@ -565,8 +528,6 @@ def scrape_keywords(
     total_filtered = 0
 
     sources = ["Google"]
-    if BING_API_KEY:
-        sources.append("Bing")
     if TRENDS_ENABLED:
         sources.append("Google Trends (validation)")
 
