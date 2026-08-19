@@ -203,15 +203,8 @@ def run_generator(
 
     save_dorks(dorks, output_path)
 
-    tpl_counts = {
-        "SQLi": len(SQLI_TEMPLATES),
-        "LFI": len(LFI_TEMPLATES),
-        "Admin": len(ADMIN_TEMPLATES),
-        "Sensitive": len(SENSITIVE_TEMPLATES),
-    }
-    tpl_summary = " + ".join(f"{v} {k}" for k, v in tpl_counts.items())
     print(
-        f"{len(keywords)} keywords × {len(tpl)} templates ({tpl_summary})"
+        f"{len(keywords)} keywords × {len(tpl)} templates SQLi"
         f" = {len(dorks)} dorks"
     )
     if domain:
