@@ -426,32 +426,8 @@ def fetch_suggestions_google(query: str, lang: str = DEFAULT_LANG) -> list[str]:
 
 
 
-DDG_AUTOCOMPLETE_URL = "https://duckduckgo.com/ac/"
-
-
-def fetch_suggestions_ddg(query: str, lang: str = DEFAULT_LANG) -> list[str]:
-    """DuckDuckGo autocomplete — gratuit, sans clé API, format identique à Google."""
-    hl = get_google_hl(lang)
-    params = {"q": query, "type": "list", "kl": f"{hl}-{hl.upper()}"}
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    for attempt in range(3):
-        try:
-            response = requests.get(
-                DDG_AUTOCOMPLETE_URL, params=params, headers=headers, timeout=8
-            )
-            response.raise_for_status()
-            return _parse_suggestion_list(response.json(), lang)
-        except Exception:
-            if attempt == 2:
-                return []
-            time.sleep(2 ** attempt)
-
-    return []
-
-
 def fetch_suggestions(query: str, lang: str = DEFAULT_LANG) -> list[str]:
-    """Fallback single-source fetch (Google only) for backward compat."""
+    """Single-source fetch (Google only)."""
     return fetch_suggestions_google(query, lang)
 
 
@@ -460,19 +436,13 @@ def fetch_multi_source(
     lang: str = DEFAULT_LANG,
 ) -> dict[str, float]:
     """
-    Fetch Google + DuckDuckGo autocomplete séquentiellement.
-    Score = Σ(1 + 1/rank) par source — les keywords vus par les deux remontent.
+    Fetch Google autocomplete et retourne un dict keyword→score.
+    Score = 1 + 1/rank (position dans les suggestions Google).
     La parallélisation se fait au niveau des seeds (SEED_WORKERS), pas ici.
     """
     scores: dict[str, float] = {}
-
-    def add_source(suggestions: list[str]) -> None:
-        for rank, kw in enumerate(suggestions):
-            scores[kw] = scores.get(kw, 0.0) + 1.0 + 1.0 / (rank + 1)
-
-    add_source(fetch_suggestions_google(query, lang))
-    add_source(fetch_suggestions_ddg(query, lang))
-
+    for rank, kw in enumerate(fetch_suggestions_google(query, lang)):
+        scores[kw] = scores.get(kw, 0.0) + 1.0 + 1.0 / (rank + 1)
     return scores
 
 
@@ -653,7 +623,7 @@ def scrape_keywords(
     total_raw = 0
     total_filtered = 0
 
-    sources = ["Google"]
+    sources = ["Google Autocomplete"]
     if TRENDS_ENABLED:
         sources.append("Google Trends (validation)")
 
