@@ -69,67 +69,9 @@ SQLI_TEMPLATES = [
     'intext:"SQLiteException: no such table" {q}',
 ]
 
-LFI_TEMPLATES = [
-    # ── LFI : /etc/passwd leak confirmé ───────────────────────────────────
-    'inurl:.php?file= intext:"root:x:0:0" {q}',
-    'inurl:.php?page= intext:"root:x:0:0" {q}',
-    'inurl:.php?path= intext:"root:x:0:0" {q}',
-    'inurl:.php?lang= intext:"root:x:0:0" {q}',
-    'inurl:.php?doc= intext:"root:x:0:0" {q}',
-    'inurl:.php?template= intext:"root:x:0:0" {q}',
-    # ── LFI : erreurs PHP include/require ─────────────────────────────────
-    'inurl:.php?file= intext:"failed to open stream: No such file" {q}',
-    'inurl:.php?include= intext:"Failed opening required" {q}',
-    'inurl:.php?dir= intext:"Warning: include(" {q}',
-    'inurl:.php?page= intext:"Warning: require(" {q}',
-    'inurl:.php?template= intext:"Warning: require_once(" {q}',
-    # ── LFI : Windows / IIS ───────────────────────────────────────────────
-    'inurl:.php?file= intext:"[boot loader]" {q}',
-    'inurl:?file= intext:"Volume Serial Number" {q}',
-    'inurl:.asp?file= intext:"root:x:0:0" {q}',
-]
+ALL_TEMPLATES = SQLI_TEMPLATES
 
-ADMIN_TEMPLATES = [
-    # ── Panneaux admin exposés ─────────────────────────────────────────────
-    'inurl:/admin/login.php intitle:"Login" {q}',
-    'inurl:/admin/index.php intitle:"Admin" {q}',
-    'inurl:/administrator/index.php intitle:"Administration" {q}',
-    'inurl:/wp-login.php intext:"Lost your password" {q}',
-    'inurl:/wp-admin/admin-ajax.php {q}',
-    'intitle:"phpMyAdmin" inurl:/phpmyadmin/index.php {q}',
-    'intitle:"Plesk" inurl:/login_up.php {q}',
-    'intitle:"cPanel" inurl:2083 {q}',
-    'intitle:"Webmin" inurl:10000 {q}',
-    'inurl:/admin/login intext:"Username" intext:"Password" {q}',
-    'inurl:"/panel/login" intitle:"Admin Panel" {q}',
-    'inurl:"/controlpanel" intitle:"Control Panel" {q}',
-    'inurl:"/dashboard" intext:"admin" intext:"password" {q}',
-    'intitle:"Django administration" {q}',
-    'intitle:"Laravel" intext:"SQLSTATE" {q}',
-]
-
-SENSITIVE_TEMPLATES = [
-    # ── Fichiers sensibles exposés ────────────────────────────────────────
-    'filetype:env intext:"DB_PASSWORD" {q}',
-    'filetype:env intext:"APP_SECRET" {q}',
-    'intitle:"index of" "wp-config.php" {q}',
-    'intitle:"index of" "wp-config.php.bak" {q}',
-    'intitle:"index of" ".git" {q}',
-    'inurl:/.git/config {q}',
-    'filetype:sql intext:"INSERT INTO" intext:"password" {q}',
-    'filetype:sql intext:"CREATE TABLE" intext:"users" {q}',
-    'intitle:"index of" "database.yml" {q}',
-    'filetype:xml intext:"password" inurl:config {q}',
-    'filetype:bak inurl:config {q}',
-    'filetype:log intext:"password" inurl:/var/log {q}',
-    'intitle:"index of" "credentials" {q}',
-    'intitle:"index of" ".env" {q}',
-    'inurl:"backup" filetype:zip {q}',
-]
-
-ALL_TEMPLATES = SQLI_TEMPLATES + LFI_TEMPLATES + ADMIN_TEMPLATES + SENSITIVE_TEMPLATES
-
-# Aliases pour compat
+# Aliases
 SQLI_HQ_TEMPLATES = SQLI_TEMPLATES
 SQLI_SQL_TEMPLATES = SQLI_TEMPLATES
 

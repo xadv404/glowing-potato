@@ -45,8 +45,8 @@ MAX_PER_PREFIX = 5
 MAX_PER_ROOT = 4
 MAX_PER_SEED = 40
 MAX_MODIFIERS = 8
-MAX_WORKERS = 5    # workers HTTP par seed
-SEED_WORKERS = 3   # seeds traitées en parallèle
+MAX_WORKERS = 4    # workers HTTP par seed
+SEED_WORKERS = 5   # seeds traitées en parallèle
 
 EN_NOISE_MARKERS: frozenset[str] = frozenset({
     "is", "are", "was", "were", "the", "this", "that",
@@ -96,24 +96,19 @@ def normalize_keyword(text: str, lang: str) -> str:
 
 def decompose_seed(seed: str, lang: str) -> list[str]:
     """
-    Pour un seed de 3+ mots, génère les bigrammes adjacents + mots significatifs.
-    Permet à Google d'auto-compléter chaque composant du seed.
+    Pour un seed de 3+ mots, génère les bigrammes adjacents significatifs.
+    Filtre les paires contenant un stopword (ex: "streaming pas", "pas cher").
     """
     profile = get_lang_profile(lang)
     stopwords = profile.stopwords
-    cjk = is_cjk_lang(lang)
     words = normalize_keyword(seed, lang).split()
     if len(words) < 3:
         return []
-    subs: list[str] = []
-    # bigrammes consécutifs
-    for i in range(len(words) - 1):
-        subs.append(f"{words[i]} {words[i + 1]}")
-    # mots significatifs seuls (non-stopword, ≥ 3 chars)
-    for w in words:
-        if w not in stopwords and len(w) >= (2 if cjk else 3):
-            subs.append(w)
-    return list(dict.fromkeys(subs))  # dedupe, preserve order
+    return [
+        f"{words[i]} {words[i + 1]}"
+        for i in range(len(words) - 1)
+        if words[i] not in stopwords and words[i + 1] not in stopwords
+    ]
 
 
 def expand_seed_list(seeds: list[str], lang: str) -> list[str]:
@@ -431,6 +426,48 @@ def fetch_suggestions_google(query: str, lang: str = DEFAULT_LANG) -> list[str]:
 
 
 
+BING_AUTOCOMPLETE_URL = "https://api.bing.com/qsonhs.aspx"
+
+# Mapping lang → Bing market code
+BING_MKT: dict[str, str] = {
+    "fr": "fr-FR", "en": "en-US", "es": "es-ES", "de": "de-DE",
+    "pt": "pt-BR", "it": "it-IT", "ru": "ru-RU", "nl": "nl-NL",
+    "pl": "pl-PL", "tr": "tr-TR", "ja": "ja-JP", "ko": "ko-KR",
+    "zh-cn": "zh-CN", "zh-tw": "zh-TW", "ar": "ar-SA",
+}
+
+
+def fetch_suggestions_bing(query: str, lang: str = DEFAULT_LANG) -> list[str]:
+    mkt = BING_MKT.get(normalize_lang(lang), "en-US")
+    params = {"q": query, "mkt": mkt}
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    for attempt in range(3):
+        try:
+            response = requests.get(
+                BING_AUTOCOMPLETE_URL, params=params, headers=headers, timeout=8
+            )
+            response.raise_for_status()
+            data = response.json()
+            # Format: {"AS":{"Results":[{"Suggests":[{"Txt":"..."},...],...}],...}}
+            suggests = (
+                data.get("AS", {})
+                .get("Results", [{}])[0]
+                .get("Suggests", [])
+            )
+            return [
+                normalize_keyword(s["Txt"], lang)
+                for s in suggests
+                if isinstance(s, dict) and "Txt" in s
+            ]
+        except Exception as exc:
+            if attempt == 2:
+                return []
+            time.sleep(2 ** attempt)
+
+    return []
+
+
 def fetch_suggestions(query: str, lang: str = DEFAULT_LANG) -> list[str]:
     """Fallback single-source fetch (Google only) for backward compat."""
     return fetch_suggestions_google(query, lang)
@@ -441,19 +478,20 @@ def fetch_multi_source(
     lang: str = DEFAULT_LANG,
 ) -> dict[str, float]:
     """
-    Fetch from Google + Bing (if BING_API_KEY is set) and compute a
-    cross-source confidence score: score = Σ(1 + 1/rank) per source.
-    Keywords seen by multiple sources rank higher.
+    Fetch Google + Bing autocomplete en parallèle.
+    Score = Σ(1 + 1/rank) par source — les keywords vus par les deux remontent.
     """
     scores: dict[str, float] = {}
 
     def add_source(suggestions: list[str]) -> None:
         for rank, kw in enumerate(suggestions):
-            position_bonus = 1.0 / (rank + 1)
-            scores[kw] = scores.get(kw, 0.0) + 1.0 + position_bonus
+            scores[kw] = scores.get(kw, 0.0) + 1.0 + 1.0 / (rank + 1)
 
-    google_results = fetch_suggestions_google(query, lang)
-    add_source(google_results)
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        g_future = ex.submit(fetch_suggestions_google, query, lang)
+        b_future = ex.submit(fetch_suggestions_bing, query, lang)
+        add_source(g_future.result())
+        add_source(b_future.result())
 
     return scores
 
