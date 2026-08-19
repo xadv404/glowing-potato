@@ -10,6 +10,12 @@ from threading import Lock
 
 import requests
 
+try:
+    from pytrends.request import TrendReq as _TrendReq
+    _PYTRENDS_AVAILABLE = True
+except ImportError:
+    _PYTRENDS_AVAILABLE = False
+
 from config import (
     CASELESS_LANGS,
     DEFAULT_LANG,
@@ -24,6 +30,14 @@ from config import (
 AUTOCOMPLETE_GOOGLE_URL = "https://suggestqueries.google.com/complete/search"
 BING_URL = "https://api.bing.microsoft.com/v7.0/Suggestions"
 BING_API_KEY = os.environ.get("BING_API_KEY", "")
+TRENDS_ENABLED = _PYTRENDS_AVAILABLE and os.environ.get("TRENDS_ENABLED", "1") != "0"
+TRENDS_GEO: dict[str, str] = {
+    "fr": "FR", "en": "US", "es": "ES", "de": "DE", "pt": "BR",
+    "it": "IT", "ru": "RU", "ar": "SA", "nl": "NL", "pl": "PL",
+    "tr": "TR", "ja": "JP", "ko": "KR", "zh-cn": "CN", "zh-tw": "TW",
+}
+TRENDS_BATCH = 5    # limite de l'API Trends
+TRENDS_DELAY = 1.2  # secondes entre batches pour éviter le rate-limit
 
 DEFAULT_DELAY = 0.15
 MIN_WORDS = 1
@@ -492,6 +506,47 @@ def expand_seed(
     return all_scores, direct
 
 
+def score_with_trends(
+    keywords: set[str],
+    lang: str = DEFAULT_LANG,
+) -> dict[str, int]:
+    """
+    Interroge Google Trends pour chaque keyword et retourne son score moyen
+    sur 12 mois (0–100). Score 0 = aucun volume de recherche détecté.
+    Traitement par batch de 5 (limite API). Échoue silencieusement.
+    """
+    if not TRENDS_ENABLED or not keywords:
+        return {}
+
+    geo = TRENDS_GEO.get(normalize_lang(lang), "")
+    hl = get_google_hl(lang)
+    scores: dict[str, int] = {}
+    kw_list = list(keywords)
+
+    try:
+        pytrends = _TrendReq(hl=hl, tz=0, timeout=(10, 25))
+    except Exception:
+        return {}
+
+    for i in range(0, len(kw_list), TRENDS_BATCH):
+        batch = kw_list[i : i + TRENDS_BATCH]
+        try:
+            pytrends.build_payload(batch, cat=0, timeframe="today 12-m", geo=geo)
+            data = pytrends.interest_over_time()
+            if data.empty:
+                for kw in batch:
+                    scores[kw] = 0
+            else:
+                for kw in batch:
+                    scores[kw] = int(data[kw].mean()) if kw in data.columns else 0
+        except Exception:
+            for kw in batch:
+                scores[kw] = 0
+        time.sleep(TRENDS_DELAY)
+
+    return scores
+
+
 def scrape_keywords(
     input_keywords: list[str],
     lang: str = DEFAULT_LANG,
@@ -512,6 +567,8 @@ def scrape_keywords(
     sources = ["Google"]
     if BING_API_KEY:
         sources.append("Bing")
+    if TRENDS_ENABLED:
+        sources.append("Google Trends (validation)")
 
     print(
         f"Source : {', '.join(sources)} | "
@@ -556,9 +613,26 @@ def scrape_keywords(
         stopwords=theme_profile.stopwords,
     )
 
+    # Validation Google Trends : filtre les keywords sans volume réel
+    before_trends = len(all_keywords)
+    if TRENDS_ENABLED and all_keywords:
+        print(f"Validation Trends : {before_trends} keywords -> interrogation par batch de {TRENDS_BATCH}…")
+        trends_scores = score_with_trends(all_keywords, lang)
+        if trends_scores:
+            # Garder ceux avec score > 0 ; si tous sont à 0 (erreur réseau), on garde tout
+            nonzero = {kw for kw, s in trends_scores.items() if s > 0}
+            if nonzero:
+                all_keywords = nonzero
+            print(
+                f"Trends : {before_trends} -> {len(all_keywords)} "
+                f"({before_trends - len(all_keywords)} éliminés, volume nul)\n"
+            )
+
     print(
         f"Filtrage : {total_raw} brutes -> {total_filtered} retenues "
-        f"-> {before_global} uniques -> {len(all_keywords)} après dédup globale\n"
+        f"-> {before_global} uniques -> {before_trends} après dédup globale"
+        + (f" -> {len(all_keywords)} après Trends" if TRENDS_ENABLED else "")
+        + "\n"
     )
 
     return all_keywords
