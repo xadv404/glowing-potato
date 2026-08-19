@@ -195,18 +195,7 @@ def is_on_theme(
 
     # Condition 2 : ancrage thème — exclure les mots du seed lui-même
     # pour éviter les faux positifs sur seeds mono-mot (canon, gore, yuri…)
-    non_seed_words = {
-        w for w in kw_set - seed_parts
-        if w not in theme_profile.stopwords
-    }
-
-    if len(kw_words) == 3:
-        # Strict pour 3 mots : TOUS les mots non-seed doivent être des mots-thème.
-        # Évite "canon streaming camera", "playlist iptv gratuit", "catalogue manga guimet"…
-        return bool(non_seed_words) and non_seed_words.issubset(theme_profile.seed_words)
-
-    # 2 mots : au moins 1 mot non-seed est un mot-thème
-    non_seed_theme = non_seed_words.intersection(theme_profile.seed_words)
+    non_seed_theme = kw_set.intersection(theme_profile.seed_words) - seed_parts
     if non_seed_theme:
         return True
 
