@@ -57,43 +57,7 @@ SQLI_TEMPLATES = [
     'intext:"SQLite3::query(): Unable to prepare statement" {q}',
     'intext:"Warning: SQLite3::exec()" intext:"syntax error" {q}',
     'intext:"SQLiteException: no such table" {q}',
-    # ── Tier 2 : CMS spécifiques — WordPress plugins vulnérables ─────────
-    'inurl:"/wp-content/plugins/" intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"/wp-admin/admin-ajax.php" intext:"SQL" {q}',
-    'inurl:"?page_id=" intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"?p=" intext:"You have an error in your SQL syntax" {q}',
-    # ── Tier 2 : CMS spécifiques — Joomla ────────────────────────────────
-    'inurl:"index.php?option=com_" intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"index.php?option=com_content&view=article&id=" intext:"SQL" {q}',
-    'inurl:"index.php?option=com_virtuemart" intext:"SQL syntax" {q}',
-    # ── Tier 2 : CMS spécifiques — PrestaShop ────────────────────────────
-    'inurl:"index.php?id_product=" intext:"SQL syntax" {q}',
-    'inurl:"index.php?id_category=" intext:"SQL syntax" {q}',
-    'inurl:"index.php?id_manufacturer=" intext:"SQL" {q}',
-    # ── Tier 2 : CMS spécifiques — OpenCart ──────────────────────────────
-    'inurl:"index.php?route=product/product&product_id=" intext:"SQL" {q}',
-    'inurl:"index.php?route=product/category&path=" intext:"SQL syntax" {q}',
-    # ── Tier 2 : CMS spécifiques — Magento ───────────────────────────────
-    'inurl:"/catalog/product/view/id/" intext:"SQL syntax" {q}',
-    'inurl:"/catalogsearch/result/?q=" intext:"SQL" {q}',
-    # ── Tier 2 : CMS spécifiques — Drupal / divers ───────────────────────
-    'inurl:"?q=node/" intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"view.php?id=" intext:"You have an error in your SQL syntax" {q}',
-    'inurl:"item.php?id=" intext:"mysql" {q}',
-    # ── Tier 3 : CVE 2024-2025 — endpoints précis ────────────────────────
-    # CVE-2024-27956 — WP Automatic plugin SQLi (non authentifié)
-    'inurl:"/wp-content/plugins/wp-automatic/" {q}',
-    # CVE-2024-4345 — Startklar Elementor Addons SQLi
-    'inurl:"/wp-content/plugins/startklar-elemetoraddons/" {q}',
-    # CVE-2024-3808 — Product Configurator for WooCommerce SQLi
-    'inurl:"/wp-content/plugins/woocommerce-product-configurator/" {q}',
-    # CVE-2025-2025 — CKAN datastore search SQL (GHDB 2026)
-    'inurl:"/api/action/datastore_search_sql" {q}',
-    # CVE-2024-28255 — OpenMetadata SQLi
-    'inurl:"/api/v1/search/query" intext:"sqlException" {q}',
-    # Drupal 7 SA-CORE-2014-005 (Drupalgeddon) — toujours présent
-    'inurl:"?q=node&destination=node" intext:"SQL" {q}',
-    # ── Tier 4 : dumps SQL exposés ────────────────────────────────────────
+    # ── Tier 2 : dumps SQL exposés ────────────────────────────────────────
     'filetype:sql intext:"phpMyAdmin SQL Dump" {q}',
     'filetype:sql "INSERT INTO" intext:"password" {q}',
     'ext:sql inurl:backup intext:"CREATE TABLE" {q}',
