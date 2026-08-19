@@ -426,41 +426,23 @@ def fetch_suggestions_google(query: str, lang: str = DEFAULT_LANG) -> list[str]:
 
 
 
-BING_AUTOCOMPLETE_URL = "https://api.bing.com/qsonhs.aspx"
-
-# Mapping lang → Bing market code
-BING_MKT: dict[str, str] = {
-    "fr": "fr-FR", "en": "en-US", "es": "es-ES", "de": "de-DE",
-    "pt": "pt-BR", "it": "it-IT", "ru": "ru-RU", "nl": "nl-NL",
-    "pl": "pl-PL", "tr": "tr-TR", "ja": "ja-JP", "ko": "ko-KR",
-    "zh-cn": "zh-CN", "zh-tw": "zh-TW", "ar": "ar-SA",
-}
+DDG_AUTOCOMPLETE_URL = "https://duckduckgo.com/ac/"
 
 
-def fetch_suggestions_bing(query: str, lang: str = DEFAULT_LANG) -> list[str]:
-    mkt = BING_MKT.get(normalize_lang(lang), "en-US")
-    params = {"q": query, "mkt": mkt}
+def fetch_suggestions_ddg(query: str, lang: str = DEFAULT_LANG) -> list[str]:
+    """DuckDuckGo autocomplete — gratuit, sans clé API, format identique à Google."""
+    hl = get_google_hl(lang)
+    params = {"q": query, "type": "list", "kl": f"{hl}-{hl.upper()}"}
     headers = {"User-Agent": "Mozilla/5.0"}
 
     for attempt in range(3):
         try:
             response = requests.get(
-                BING_AUTOCOMPLETE_URL, params=params, headers=headers, timeout=8
+                DDG_AUTOCOMPLETE_URL, params=params, headers=headers, timeout=8
             )
             response.raise_for_status()
-            data = response.json()
-            # Format: {"AS":{"Results":[{"Suggests":[{"Txt":"..."},...],...}],...}}
-            suggests = (
-                data.get("AS", {})
-                .get("Results", [{}])[0]
-                .get("Suggests", [])
-            )
-            return [
-                normalize_keyword(s["Txt"], lang)
-                for s in suggests
-                if isinstance(s, dict) and "Txt" in s
-            ]
-        except Exception as exc:
+            return _parse_suggestion_list(response.json(), lang)
+        except Exception:
             if attempt == 2:
                 return []
             time.sleep(2 ** attempt)
@@ -478,7 +460,7 @@ def fetch_multi_source(
     lang: str = DEFAULT_LANG,
 ) -> dict[str, float]:
     """
-    Fetch Google + Bing autocomplete en parallèle.
+    Fetch Google + DuckDuckGo autocomplete en parallèle.
     Score = Σ(1 + 1/rank) par source — les keywords vus par les deux remontent.
     """
     scores: dict[str, float] = {}
@@ -489,9 +471,9 @@ def fetch_multi_source(
 
     with ThreadPoolExecutor(max_workers=2) as ex:
         g_future = ex.submit(fetch_suggestions_google, query, lang)
-        b_future = ex.submit(fetch_suggestions_bing, query, lang)
+        d_future = ex.submit(fetch_suggestions_ddg, query, lang)
         add_source(g_future.result())
-        add_source(b_future.result())
+        add_source(d_future.result())
 
     return scores
 
