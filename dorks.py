@@ -50,7 +50,6 @@ SQLI_GOOGLE_TEMPLATES = [
     '"[SQL Server Driver][SQL Server]Line 1: Incorrect syntax near" {q}',
     '"Incorrect syntax near" {q}',
     '"Warning: mssql_query()" {q}',
-    '"System.Data.SqlClient.SqlException" {q}',
     # Oracle
     '"ORA-00933: SQL command not properly ended" {q}',
     '"ORA-00907: missing right parenthesis" {q}',
@@ -68,24 +67,6 @@ SQLI_GOOGLE_TEMPLATES = [
     # Sybase
     '"Warning: sybase_query()" {q}',
     '"Sybase message:" intext:"Incorrect syntax" {q}',
-    # ColdFusion
-    '"[Macromedia][SQLServer JDBC Driver]" {q}',
-    '"[ColdFusion][ODBC]" {q}',
-    # Java — Hibernate / JDBC
-    '"java.sql.SQLException" {q}',
-    '"org.hibernate.exception.SQLGrammarException" {q}',
-    '"com.mysql.jdbc.exceptions.jdbc4.MySQLSyntaxErrorException" {q}',
-    # Python — Django / SQLAlchemy
-    '"django.db.utils.OperationalError" {q}',
-    '"sqlalchemy.exc.OperationalError" {q}',
-    '"OperationalError: (1064" {q}',
-    # PHP frameworks
-    '"A Database Error Occurred" {q}',
-    '"Illuminate\Database\QueryException" {q}',
-    '"An exception occurred while executing" intext:"SQL" {q}',
-    # Framework / server debug pages
-    'intitle:"Whoops! There was an error." intext:"SQL" {q}',
-    'intitle:"Apache Tomcat" "Error Report" intext:"SQL" {q}',
     # ext: / filetype: — encore fiables sur Google
     'ext:php intext:"sql syntax" {q}',
     'ext:php intext:"mysql_fetch_array" {q}',
@@ -149,20 +130,6 @@ SQLI_BING_TEMPLATES = [
     'inbody:"DB2 SQL error: SQLCODE:" {q}',
     # Sybase
     'inbody:"Warning: sybase_query()" {q}',
-    # ColdFusion
-    'inbody:"[Macromedia][SQLServer JDBC Driver]" {q}',
-    'inbody:"[ColdFusion][ODBC]" {q}',
-    # Java — Hibernate / JDBC
-    'inbody:"java.sql.SQLException" {q}',
-    'inbody:"org.hibernate.exception.SQLGrammarException" {q}',
-    # Python — Django / SQLAlchemy
-    'inbody:"django.db.utils.OperationalError" {q}',
-    'inbody:"OperationalError: (1064" {q}',
-    # PHP frameworks
-    'inbody:"A Database Error Occurred" {q}',
-    'inbody:"Illuminate\Database\QueryException" {q}',
-    # ASP.NET
-    'inbody:"System.Data.SqlClient.SqlException" {q}',
     # ext: operator
     'ext:php inbody:"sql syntax" {q}',
     'ext:php inbody:"mysql_fetch_array" {q}',
