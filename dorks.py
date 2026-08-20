@@ -83,76 +83,11 @@ SQLI_GOOGLE_TEMPLATES = [
     'filetype:asp intext:"[ODBC SQL" {q}',
 ]
 
-# ── Templates Bing (2026) ─────────────────────────────────────────────────────
-SQLI_BING_TEMPLATES = [
-    # MySQL / MySQLi — inurl: query strings + inbody: (Bing les indexe)
-    'inurl:.php?id= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?id= inbody:"mysql_fetch_array() expects parameter 1" {q}',
-    'inurl:.php?id= inbody:"mysql_num_rows() expects parameter 1" {q}',
-    'inurl:.php?id= inbody:"Warning: mysql_query()" {q}',
-    'inurl:.php?id= inbody:"supplied argument is not a valid MySQL" {q}',
-    'inurl:.php?catid= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?cat= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?pid= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?item= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?page= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?news_id= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?article_id= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?product_id= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?cid= inbody:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?sid= inbody:"You have an error in your SQL syntax" {q}',
-    'inbody:"Warning: mysqli_fetch_array()" {q}',
-    'inbody:"Warning: mysqli_num_rows()" {q}',
-    'inbody:"Error Executing Database Query" {q}',
-    # PDO
-    'inbody:"PDOException: SQLSTATE" {q}',
-    'inbody:"SQLSTATE[42000]: Syntax error" {q}',
-    'inbody:"SQLSTATE[HY000]" {q}',
-    # PostgreSQL
-    'inbody:"pg_query(): Query failed:" {q}',
-    'inbody:"pg_exec(): Query failed:" {q}',
-    'inbody:"unterminated quoted string at or near" {q}',
-    'inbody:"ERROR: syntax error at or near" {q}',
-    # MSSQL / SQL Server
-    'inurl:id= inbody:"Microsoft OLE DB Provider for SQL Server" {q}',
-    'inurl:id= inbody:"Unclosed quotation mark after the character string" {q}',
-    'inbody:"[Microsoft][ODBC SQL Server Driver]" {q}',
-    'inbody:"[Microsoft][SQL Native Client][SQL Server]" {q}',
-    'inbody:"Incorrect syntax near" {q}',
-    'inbody:"Warning: mssql_query()" {q}',
-    'inurl:.asp?id= inbody:"Syntax error" {q}',
-    'inurl:.aspx?id= inbody:"SqlException" {q}',
-    # Oracle
-    'inurl:id= inbody:"ORA-01756: quoted string not properly terminated" {q}',
-    'inbody:"ORA-00933: SQL command not properly ended" {q}',
-    'inbody:"ORA-00907: missing right parenthesis" {q}',
-    'inbody:"ORA-00936: missing expression" {q}',
-    # SQLite
-    'inbody:"SQLite3::query(): Unable to prepare statement" {q}',
-    'inbody:"SQLiteException: no such table" {q}',
-    # IBM DB2
-    'inbody:"detected an internal error [IBM][CLI Driver][DB2" {q}',
-    'inbody:"DB2 SQL error: SQLCODE:" {q}',
-    # Sybase
-    'inbody:"Warning: sybase_query()" {q}',
-    # ext: operator
-    'ext:php inbody:"sql syntax" {q}',
-    'ext:php inbody:"mysql_fetch_array" {q}',
-    'ext:asp inbody:"Syntax error" {q}',
-    'ext:aspx inbody:"SqlException" {q}',
-]
-
 SQLI_TEMPLATES = SQLI_GOOGLE_TEMPLATES  # compat
-ALL_TEMPLATES = SQLI_GOOGLE_TEMPLATES   # default
+ALL_TEMPLATES = SQLI_GOOGLE_TEMPLATES
 
-# Aliases
 SQLI_HQ_TEMPLATES = SQLI_GOOGLE_TEMPLATES
 SQLI_SQL_TEMPLATES = SQLI_GOOGLE_TEMPLATES
-
-ENGINES = {
-    "google": SQLI_GOOGLE_TEMPLATES,
-    "bing":   SQLI_BING_TEMPLATES,
-}
 
 
 def quote_keyword(keyword: str) -> str:
@@ -266,13 +201,12 @@ def run_generator(
     domain: str | None = None,
     templates: list[str] | None = None,
     validate: bool = False,
-    engine: str = "google",
 ) -> tuple[int, Path]:
     if output_path is None:
         stem = input_path.stem.removesuffix("_keywords")
-        output_path = input_path.with_name(f"{stem}_dorks_{engine}.txt")
+        output_path = input_path.with_name(f"{stem}_dorks.txt")
 
-    tpl = templates if templates is not None else ENGINES.get(engine, ALL_TEMPLATES)
+    tpl = templates if templates is not None else ALL_TEMPLATES
     keywords = load_lines(input_path)
     dorks = generate_dorks(keywords, domain=domain, templates=tpl)
 
@@ -283,10 +217,7 @@ def run_generator(
 
     save_dorks(dorks, output_path)
 
-    print(
-        f"{len(keywords)} keywords × {len(tpl)} templates SQLi [{engine}]"
-        f" = {len(dorks)} dorks"
-    )
+    print(f"{len(keywords)} keywords × {len(tpl)} templates SQLi = {len(dorks)} dorks")
     if domain:
         print(f"Domaine : {domain}")
     print(f"Sauvegardé : {output_path}")
