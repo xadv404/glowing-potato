@@ -16,46 +16,65 @@ import requests
 SQLI_GOOGLE_TEMPLATES = [
     # MySQL / MySQLi — string exacte entre guillemets (Google indexe le contenu)
     '"You have an error in your SQL syntax" {q}',
+    '"You have an error in your SQL syntax near" {q}',
     '"mysql_fetch_array() expects parameter 1 to be resource" {q}',
     '"mysql_num_rows() expects parameter 1 to be resource" {q}',
     '"mysql_fetch_assoc() expects parameter 1 to be resource" {q}',
     '"supplied argument is not a valid MySQL result resource" {q}',
     '"Warning: mysql_query()" {q}',
+    '"Warning: mysql_connect()" {q}',
     '"MySQL Error: 1064" {q}',
     '"Warning: mysqli_fetch_array()" {q}',
     '"Warning: mysqli_num_rows()" {q}',
     '"mysqli_fetch_array() expects parameter 1 to be mysqli_result" {q}',
     '"Error Executing Database Query" {q}',
+    '"mySQL error with query" {q}',
     # PDO
     '"PDOException: SQLSTATE" {q}',
     '"SQLSTATE[42000]: Syntax error or access violation" {q}',
     '"SQLSTATE[HY000]" {q}',
+    '"PDO::query(): SQLSTATE" {q}',
     # PostgreSQL
     '"pg_query(): Query failed:" {q}',
     '"pg_exec(): Query failed:" {q}',
     '"unterminated quoted string at or near" {q}',
     '"ERROR: syntax error at or near" {q}',
+    '"Supplied argument is not a valid PostgreSQL result" {q}',
+    '"PostgreSQL query failed: ERROR: parser: parse error" {q}',
     # MSSQL / SQL Server
     '"Microsoft OLE DB Provider for SQL Server" {q}',
     '"Unclosed quotation mark after the character string" {q}',
+    '"Unclosed quotation mark before the character string" {q}',
     '"[Microsoft][ODBC SQL Server Driver]" {q}',
     '"[Microsoft][SQL Native Client][SQL Server]" {q}',
+    '"[SQL Server Driver][SQL Server]Line 1: Incorrect syntax near" {q}',
     '"Incorrect syntax near" {q}',
     '"Warning: mssql_query()" {q}',
     # Oracle
     '"ORA-00933: SQL command not properly ended" {q}',
     '"ORA-00907: missing right parenthesis" {q}',
     '"ORA-01756: quoted string not properly terminated" {q}',
+    '"ORA-00921: unexpected end of SQL command" {q}',
     '"ORA-00936: missing expression" {q}',
     # SQLite
     '"SQLite3::query(): Unable to prepare statement" {q}',
     '"SQLiteException: no such table" {q}',
-    # ext: operator — encore fiable sur Google
+    '"Warning: SQLite3::exec()" {q}',
+    # IBM DB2
+    '"detected an internal error [IBM][CLI Driver][DB2" {q}',
+    '"An illegal character has been found in the statement" {q}',
+    # Framework / server debug pages
+    'intitle:"Whoops! There was an error." intext:"SQL" {q}',
+    'intitle:"Apache Tomcat" "Error Report" intext:"SQL" {q}',
+    # ext: / filetype: — encore fiables sur Google
     'ext:php intext:"sql syntax" {q}',
     'ext:php intext:"mysql_fetch_array" {q}',
     'ext:php intext:"mysql_query" {q}',
     'ext:asp intext:"Syntax error" {q}',
     'ext:aspx intext:"SqlException" {q}',
+    'filetype:php intext:"expects parameter 1 to be resource, boolean given" {q}',
+    'filetype:php intext:"mysql_fetch_array" intext:"Warning:" {q}',
+    'filetype:asp "[ODBC SQL" {q}',
 ]
 
 # ── Templates Bing (2026) ─────────────────────────────────────────────────────
