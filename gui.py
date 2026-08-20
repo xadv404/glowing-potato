@@ -134,12 +134,25 @@ class ToolkitApp(tk.Tk):
         )
         self.enriched_browse_btn.grid(row=2, column=0, sticky="w")
 
-        ttk.Label(self.dork_frame, text="Domaine cible (optionnel) :").grid(
+        ttk.Label(self.dork_frame, text="Moteur de recherche :").grid(
             row=3, column=0, sticky="w", pady=(8, 0)
+        )
+        engine_frame = ttk.Frame(self.dork_frame)
+        engine_frame.grid(row=4, column=0, sticky="w", pady=2)
+        self.engine_var = tk.StringVar(value="google")
+        ttk.Radiobutton(
+            engine_frame, text="Google", variable=self.engine_var, value="google"
+        ).grid(row=0, column=0, padx=(0, 12))
+        ttk.Radiobutton(
+            engine_frame, text="Bing", variable=self.engine_var, value="bing"
+        ).grid(row=0, column=1)
+
+        ttk.Label(self.dork_frame, text="Domaine cible (optionnel) :").grid(
+            row=5, column=0, sticky="w", pady=(8, 0)
         )
         self.domain_var = tk.StringVar()
         ttk.Entry(self.dork_frame, textvariable=self.domain_var, width=44).grid(
-            row=4, column=0, sticky="w", pady=2
+            row=6, column=0, sticky="w", pady=2
         )
 
         # --- Actions ---
@@ -259,6 +272,7 @@ class ToolkitApp(tk.Tk):
     def _run(self) -> None:
         mode = self.mode_var.get()
         domain = self.domain_var.get().strip().lower() or None
+        engine = self.engine_var.get()
 
         try:
             kw_count = 0
@@ -286,13 +300,13 @@ class ToolkitApp(tk.Tk):
                 assert enriched_path is not None
                 self.after(0, lambda: self.status_label.config(text="Génération dorks..."))
                 dork_count, dorks_path = run_dork_generator(
-                    enriched_path, domain=domain
+                    enriched_path, domain=domain, engine=engine
                 )
             elif mode == "dorks":
                 assert self.keywords_file is not None
                 self.after(0, lambda: self.status_label.config(text="Génération dorks..."))
                 dork_count, dorks_path = run_dork_generator(
-                    self.keywords_file, domain=domain
+                    self.keywords_file, domain=domain, engine=engine
                 )
 
         except (FileNotFoundError, ValueError, UnsupportedLanguageError) as exc:

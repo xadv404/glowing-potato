@@ -7,73 +7,122 @@ from pathlib import Path
 import requests
 
 # {q} = keyword (quoted if multi-word by build_dork).
-# Sources: GHDB 2026, SecOps, NVD CVE advisories, WPScan.
+# Google : inurl:.php?id= mort depuis ~2023 (query strings non indexées).
+#           → strings d'erreur en guillemets + ext: operator.
+# Bing   : inurl: fonctionne encore sur les query strings.
+#           → inbody: à la place de intext:.
 
-SQLI_TEMPLATES = [
-    # ── MySQL / MySQLi erreurs confirmées ─────────────────────────────────
-    'inurl:.php?id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?id= intext:"mysql_fetch_array() expects parameter 1" {q}',
-    'inurl:.php?id= intext:"mysql_num_rows() expects parameter 1" {q}',
-    'inurl:.php?id= intext:"mysql_fetch_assoc() expects parameter 1" {q}',
-    'inurl:.php?id= intext:"supplied argument is not a valid MySQL" {q}',
-    'inurl:.php?id= intext:"Warning: mysql_query()" {q}',
-    'inurl:.php?id= intext:"MySQL Error: 1064" {q}',
-    'inurl:.php?id= intext:"mysql_result(): supplied argument" {q}',
-    'inurl:.php?catid= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?cat= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?pid= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?item= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?page= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?news_id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?article_id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?product_id= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?cid= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?sid= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?tid= intext:"You have an error in your SQL syntax" {q}',
-    'inurl:.php?uid= intext:"You have an error in your SQL syntax" {q}',
-    'intext:"Warning: mysqli_fetch_array()" {q}',
-    'intext:"Warning: mysqli_num_rows()" {q}',
-    'intext:"Warning: mysqli_fetch_assoc()" {q}',
-    'intext:"mysqli_fetch_array() expects parameter 1 to be mysqli_result" {q}',
-    'intext:"mysql_num_rows()" intext:"mysql_fetch_array()" intext:"mysql_query()" {q}',
-    'intext:"Error Executing Database Query." intext:"SQL" {q}',
-    # ── PDO erreurs confirmées ─────────────────────────────────────────────
-    'inurl:.php?id= intext:"SQLSTATE[42000]: Syntax error" {q}',
-    'intext:"PDOException: SQLSTATE" {q}',
-    'intext:"PDO::query(): SQLSTATE" {q}',
-    'intext:"SQLSTATE[HY000]" intext:"query" {q}',
-    # ── PostgreSQL erreurs confirmées ──────────────────────────────────────
-    'inurl:.php?id= intext:"PostgreSQL query failed: ERROR" {q}',
-    'intext:"pg_query(): Query failed:" {q}',
-    'intext:"pg_exec(): Query failed:" {q}',
-    'inurl:id= intext:"unterminated quoted string at or near" {q}',
-    'intext:"ERROR: syntax error at or near" {q}',
-    # ── MSSQL / SQL Server erreurs confirmées ──────────────────────────────
-    'inurl:id= intext:"Microsoft OLE DB Provider for SQL Server" {q}',
-    'inurl:id= intext:"Unclosed quotation mark after the character string" {q}',
-    'intext:"[Microsoft][ODBC SQL Server Driver]" {q}',
-    'intext:"[Microsoft][SQL Native Client][SQL Server]" {q}',
-    'intext:"Incorrect syntax near" intext:"SQL" {q}',
-    'intext:"Warning: mssql_query()" {q}',
-    'inurl:.asp?id= intext:"Syntax error" intext:"query" {q}',
-    'inurl:.aspx?id= intext:"SqlException" {q}',
-    # ── Oracle erreurs confirmées ──────────────────────────────────────────
-    'inurl:id= intext:"ORA-01756: quoted string not properly terminated" {q}',
-    'inurl:.php?id= intext:"ORA-00921: unexpected end of SQL command" {q}',
-    'intext:"ORA-00933: SQL command not properly ended" {q}',
-    'intext:"ORA-00907: missing right parenthesis" {q}',
-    'intext:"ORA-00936: missing expression" {q}',
-    # ── SQLite erreurs confirmées ──────────────────────────────────────────
-    'intext:"SQLite3::query(): Unable to prepare statement" {q}',
-    'intext:"Warning: SQLite3::exec()" intext:"syntax error" {q}',
-    'intext:"SQLiteException: no such table" {q}',
+# ── Templates Google (2026) ───────────────────────────────────────────────────
+SQLI_GOOGLE_TEMPLATES = [
+    # MySQL / MySQLi — string exacte entre guillemets (Google indexe le contenu)
+    '"You have an error in your SQL syntax" {q}',
+    '"mysql_fetch_array() expects parameter 1 to be resource" {q}',
+    '"mysql_num_rows() expects parameter 1 to be resource" {q}',
+    '"mysql_fetch_assoc() expects parameter 1 to be resource" {q}',
+    '"supplied argument is not a valid MySQL result resource" {q}',
+    '"Warning: mysql_query()" {q}',
+    '"MySQL Error: 1064" {q}',
+    '"Warning: mysqli_fetch_array()" {q}',
+    '"Warning: mysqli_num_rows()" {q}',
+    '"mysqli_fetch_array() expects parameter 1 to be mysqli_result" {q}',
+    '"Error Executing Database Query" {q}',
+    # PDO
+    '"PDOException: SQLSTATE" {q}',
+    '"SQLSTATE[42000]: Syntax error or access violation" {q}',
+    '"SQLSTATE[HY000]" {q}',
+    # PostgreSQL
+    '"pg_query(): Query failed:" {q}',
+    '"pg_exec(): Query failed:" {q}',
+    '"unterminated quoted string at or near" {q}',
+    '"ERROR: syntax error at or near" {q}',
+    # MSSQL / SQL Server
+    '"Microsoft OLE DB Provider for SQL Server" {q}',
+    '"Unclosed quotation mark after the character string" {q}',
+    '"[Microsoft][ODBC SQL Server Driver]" {q}',
+    '"[Microsoft][SQL Native Client][SQL Server]" {q}',
+    '"Incorrect syntax near" {q}',
+    '"Warning: mssql_query()" {q}',
+    # Oracle
+    '"ORA-00933: SQL command not properly ended" {q}',
+    '"ORA-00907: missing right parenthesis" {q}',
+    '"ORA-01756: quoted string not properly terminated" {q}',
+    '"ORA-00936: missing expression" {q}',
+    # SQLite
+    '"SQLite3::query(): Unable to prepare statement" {q}',
+    '"SQLiteException: no such table" {q}',
+    # ext: operator — encore fiable sur Google
+    'ext:php intext:"sql syntax" {q}',
+    'ext:php intext:"mysql_fetch_array" {q}',
+    'ext:php intext:"mysql_query" {q}',
+    'ext:asp intext:"Syntax error" {q}',
+    'ext:aspx intext:"SqlException" {q}',
 ]
 
-ALL_TEMPLATES = SQLI_TEMPLATES
+# ── Templates Bing (2026) ─────────────────────────────────────────────────────
+SQLI_BING_TEMPLATES = [
+    # MySQL / MySQLi — inurl: query strings + inbody: (Bing les indexe)
+    'inurl:.php?id= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?id= inbody:"mysql_fetch_array() expects parameter 1" {q}',
+    'inurl:.php?id= inbody:"mysql_num_rows() expects parameter 1" {q}',
+    'inurl:.php?id= inbody:"Warning: mysql_query()" {q}',
+    'inurl:.php?id= inbody:"supplied argument is not a valid MySQL" {q}',
+    'inurl:.php?catid= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?cat= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?pid= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?item= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?page= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?news_id= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?article_id= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?product_id= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?cid= inbody:"You have an error in your SQL syntax" {q}',
+    'inurl:.php?sid= inbody:"You have an error in your SQL syntax" {q}',
+    'inbody:"Warning: mysqli_fetch_array()" {q}',
+    'inbody:"Warning: mysqli_num_rows()" {q}',
+    'inbody:"Error Executing Database Query" {q}',
+    # PDO
+    'inbody:"PDOException: SQLSTATE" {q}',
+    'inbody:"SQLSTATE[42000]: Syntax error" {q}',
+    'inbody:"SQLSTATE[HY000]" {q}',
+    # PostgreSQL
+    'inbody:"pg_query(): Query failed:" {q}',
+    'inbody:"pg_exec(): Query failed:" {q}',
+    'inbody:"unterminated quoted string at or near" {q}',
+    'inbody:"ERROR: syntax error at or near" {q}',
+    # MSSQL / SQL Server
+    'inurl:id= inbody:"Microsoft OLE DB Provider for SQL Server" {q}',
+    'inurl:id= inbody:"Unclosed quotation mark after the character string" {q}',
+    'inbody:"[Microsoft][ODBC SQL Server Driver]" {q}',
+    'inbody:"[Microsoft][SQL Native Client][SQL Server]" {q}',
+    'inbody:"Incorrect syntax near" {q}',
+    'inbody:"Warning: mssql_query()" {q}',
+    'inurl:.asp?id= inbody:"Syntax error" {q}',
+    'inurl:.aspx?id= inbody:"SqlException" {q}',
+    # Oracle
+    'inurl:id= inbody:"ORA-01756: quoted string not properly terminated" {q}',
+    'inbody:"ORA-00933: SQL command not properly ended" {q}',
+    'inbody:"ORA-00907: missing right parenthesis" {q}',
+    'inbody:"ORA-00936: missing expression" {q}',
+    # SQLite
+    'inbody:"SQLite3::query(): Unable to prepare statement" {q}',
+    'inbody:"SQLiteException: no such table" {q}',
+    # ext: operator
+    'ext:php inbody:"sql syntax" {q}',
+    'ext:php inbody:"mysql_fetch_array" {q}',
+    'ext:asp inbody:"Syntax error" {q}',
+    'ext:aspx inbody:"SqlException" {q}',
+]
+
+SQLI_TEMPLATES = SQLI_GOOGLE_TEMPLATES  # compat
+ALL_TEMPLATES = SQLI_GOOGLE_TEMPLATES   # default
 
 # Aliases
-SQLI_HQ_TEMPLATES = SQLI_TEMPLATES
-SQLI_SQL_TEMPLATES = SQLI_TEMPLATES
+SQLI_HQ_TEMPLATES = SQLI_GOOGLE_TEMPLATES
+SQLI_SQL_TEMPLATES = SQLI_GOOGLE_TEMPLATES
+
+ENGINES = {
+    "google": SQLI_GOOGLE_TEMPLATES,
+    "bing":   SQLI_BING_TEMPLATES,
+}
 
 
 def quote_keyword(keyword: str) -> str:
@@ -187,12 +236,13 @@ def run_generator(
     domain: str | None = None,
     templates: list[str] | None = None,
     validate: bool = False,
+    engine: str = "google",
 ) -> tuple[int, Path]:
     if output_path is None:
         stem = input_path.stem.removesuffix("_keywords")
-        output_path = input_path.with_name(f"{stem}_dorks.txt")
+        output_path = input_path.with_name(f"{stem}_dorks_{engine}.txt")
 
-    tpl = templates if templates is not None else ALL_TEMPLATES
+    tpl = templates if templates is not None else ENGINES.get(engine, ALL_TEMPLATES)
     keywords = load_lines(input_path)
     dorks = generate_dorks(keywords, domain=domain, templates=tpl)
 
@@ -204,7 +254,7 @@ def run_generator(
     save_dorks(dorks, output_path)
 
     print(
-        f"{len(keywords)} keywords × {len(tpl)} templates SQLi"
+        f"{len(keywords)} keywords × {len(tpl)} templates SQLi [{engine}]"
         f" = {len(dorks)} dorks"
     )
     if domain:
