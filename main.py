@@ -193,17 +193,15 @@ def is_valid_form(keyword: str, lang: str = DEFAULT_LANG) -> bool:
     if not (MIN_WORDS <= len(words) <= MAX_WORDS):
         return False
 
-    if any(ch.isdigit() for ch in keyword):
-        return False
-
     if any(c in keyword for c in ".,;:!?()[]{}"):
         return False
 
     if len(words) != len(set(words)):
         return False
 
-    min_tail = 1 if is_cjk_lang(lang) else 2
-    if len(words[-1]) <= min_tail:
+    # Rejeter uniquement les mots finaux d'un seul caractère (a, b, …)
+    # 2 lettres (vf, hd, fr, vk…) sont des suffixes légitimes
+    if len(words[-1]) < 2:
         return False
 
     # Si la langue cible n'est pas EN, rejeter les keywords avec marqueurs EN
