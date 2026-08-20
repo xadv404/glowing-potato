@@ -49,16 +49,60 @@ MAX_WORKERS = 4    # workers HTTP par seed
 SEED_WORKERS = 5   # seeds traitées en parallèle
 
 EN_NOISE_MARKERS: frozenset[str] = frozenset({
+    # English function words
     "is", "are", "was", "were", "the", "this", "that",
     "our", "their", "we", "you", "your", "my", "its",
     "he", "she", "they", "do", "does", "did",
     "how", "which", "what", "where", "when", "why",
     "not", "but", "and", "or", "if", "so", "yet",
     "an", "from", "with", "by", "at", "into",
-    "best", "new", "for", "all", "right", "will",
-    "can", "has", "have", "had", "been", "get", "got",
-    "more", "good", "great", "now", "any", "no",
+    "for", "all", "right", "will", "can", "has",
+    "have", "had", "been", "get", "got", "now", "any",
+    # English nouns / adjectives with clear French equivalents
+    "best", "new", "more", "good", "great", "no",
     "popular", "free", "online", "download", "watch",
+    "app",          # fr: application/appli
+    "game", "games",  # fr: jeu/jeux
+    "phone",        # fr: téléphone
+    "holder",       # fr: support
+    "platform",     # fr: plateforme
+    "without",      # fr: sans
+    "meaning",      # fr: signification
+    "quotes",       # fr: citations
+    "law",          # fr: loi
+    "legal",        # fr: légal (note accent missing = English spelling)
+    "unlimited",    # fr: illimité
+    "ultimate",     # fr: ultime
+    "maker",        # fr: créateur
+    "store",        # fr: magasin/boutique
+    "eagles",       # English word/brand
+    # UI/tech English abbreviations
+    "ui",
+    # English words with clear French equivalents
+    "device",       # fr: appareil
+    "french",       # fr: français/française (the English word for the language)
+    "definition",   # fr: définition (accent manquant = orthographe anglaise)
+    "resolution",   # fr: résolution
+    "economy",      # fr: économie
+    "norway",       # fr: norvège
+    "quality",      # fr: qualité
+    # Non-French languages markers
+    "zonder",       # Dutch: "without"
+    "kosten",       # German: "costs"
+    "wechseln",     # German: "switch"
+    "ohne",         # German: "without"
+    "gratis",       # German/Dutch: "free"
+    "serie",        # Spanish: "series" (French: série)
+    "pelicula",     # Spanish: "movie"
+    # Country codes / English channel codes that indicate non-FR context
+    "uk",
+    "abc",          # English TV channel marker
+    "nbc",          # English TV channel
+    "cbs",          # English TV channel
+    "browser",      # fr: navigateur
+    "movies",       # fr: films
+    "illegal",      # fr: illégal (accent manquant = orthographe anglaise)
+    "series",       # fr: séries (accent manquant = orthographe anglaise)
 })
 
 CJK_RANGES = (
@@ -73,6 +117,8 @@ class ThemeProfile:
     seed_words: set[str] = field(default_factory=set)
     seed_bigrams: set[str] = field(default_factory=set)
     stopwords: frozenset[str] = field(default_factory=frozenset)
+    dominant_words: set[str] = field(default_factory=set)  # >= 3 seeds (bigram generation)
+    theme_anchors: set[str] = field(default_factory=set)   # >= ~5% seeds (is_on_theme)
 
 
 def is_cjk_lang(lang: str) -> bool:
@@ -94,29 +140,44 @@ def normalize_keyword(text: str, lang: str) -> str:
     return text.strip().lower()
 
 
-def decompose_seed(seed: str, lang: str) -> list[str]:
+def decompose_seed(
+    seed: str,
+    lang: str,
+    dominant_words: set[str] | None = None,
+) -> list[str]:
     """
     Pour un seed de 3+ mots, génère les bigrammes adjacents significatifs.
-    Filtre les paires contenant un stopword (ex: "streaming pas", "pas cher").
+    Filtre les paires contenant un stopword et, si dominant_words est fourni,
+    ne garde que les bigrammes où LES DEUX mots sont dominants (présents dans
+    >= 2 seeds originaux), évitant ainsi les sous-seeds trop génériques.
     """
     profile = get_lang_profile(lang)
     stopwords = profile.stopwords
     words = normalize_keyword(seed, lang).split()
     if len(words) < 3:
         return []
-    return [
-        f"{words[i]} {words[i + 1]}"
-        for i in range(len(words) - 1)
-        if words[i] not in stopwords and words[i + 1] not in stopwords
-    ]
+    bigrams = []
+    for i in range(len(words) - 1):
+        w1, w2 = words[i], words[i + 1]
+        if w1 in stopwords or w2 in stopwords:
+            continue
+        if dominant_words is not None:
+            if w1 not in dominant_words or w2 not in dominant_words:
+                continue  # les deux mots doivent être dominants (≥ 3 seeds originaux)
+        bigrams.append(f"{w1} {w2}")
+    return bigrams
 
 
-def expand_seed_list(seeds: list[str], lang: str) -> list[str]:
+def expand_seed_list(
+    seeds: list[str],
+    lang: str,
+    dominant_words: set[str] | None = None,
+) -> list[str]:
     """Ajoute les sous-seeds issus des seeds ≥ 3 mots à la liste."""
     all_seeds = list(seeds)
     seen = set(normalize_keyword(s, lang) for s in seeds)
     for seed in seeds:
-        for sub in decompose_seed(seed, lang):
+        for sub in decompose_seed(seed, lang, dominant_words=dominant_words):
             if sub not in seen:
                 all_seeds.append(sub)
                 seen.add(sub)
@@ -130,11 +191,13 @@ def build_theme_profile(seeds: list[str], lang: str = DEFAULT_LANG) -> ThemeProf
     cjk = is_cjk_lang(lang)
     seed_words: set[str] = set()
     seed_bigrams: set[str] = set()
+    word_seed_count: dict[str, int] = {}
 
     for seed in seeds:
         normalized = normalize_keyword(seed, lang)
         parts = normalized.replace("-", " ").split()
         meaningful = []
+        seen_in_seed: set[str] = set()
         for w in parts:
             wl = w if cjk else w.lower()
             if wl in stopwords:
@@ -143,13 +206,28 @@ def build_theme_profile(seeds: list[str], lang: str = DEFAULT_LANG) -> ThemeProf
             if len(wl) >= min_len:
                 seed_words.add(wl)
                 meaningful.append(wl)
+                if wl not in seen_in_seed:
+                    word_seed_count[wl] = word_seed_count.get(wl, 0) + 1
+                    seen_in_seed.add(wl)
         for i in range(len(meaningful) - 1):
             seed_bigrams.add(f"{meaningful[i]} {meaningful[i + 1]}")
+
+    # Deux seuils distincts :
+    # - dominant_words (seuil 3) : utilisé pour générer les sous-seeds via bigrammes.
+    #   Seuil 3 évite les mots trop rares qui créent des sous-seeds ambigus
+    #   (ex : "catalogue" dans 2 seeds génère "catalogue france" → "catalogue france piscine").
+    # - theme_anchors (seuil ~5% des seeds) : utilisé dans is_on_theme pour valider
+    #   qu'un keyword est vraiment dans le thème. Seuil haut = meilleure précision.
+    dominant_words = {w for w, cnt in word_seed_count.items() if cnt >= 3}
+    anchor_threshold = max(3, len(seeds) // 20)
+    theme_anchors = {w for w, cnt in word_seed_count.items() if cnt >= anchor_threshold}
 
     return ThemeProfile(
         seed_words=seed_words,
         seed_bigrams=seed_bigrams,
         stopwords=stopwords,
+        dominant_words=dominant_words,
+        theme_anchors=theme_anchors,
     )
 
 
@@ -220,22 +298,52 @@ def is_on_theme(
     lang: str = DEFAULT_LANG,
 ) -> bool:
     """
-    Un keyword est dans le thème si au moins 1 mot du seed apparaît dans le keyword.
-    Google autocomplete ne retourne que des complétions pertinentes pour la query —
-    les résultats sont déjà on-theme par construction; on vérifie juste la cohérence seed.
+    Keyword est dans le thème si :
+    - il partage >= 2 mots avec le seed courant (cohérence forte), OU
+    - il partage 1 mot avec le seed ET ce mot est dominant (présent dans >= 2 seeds originaux).
+    Évite les faux positifs liés à des mots partagés incidentellement (ex: "haute" dans
+    "video haute tension" vs seed "streaming haute définition").
     """
     cjk = is_cjk_lang(lang)
-    kw_set = set(keyword.split())
-
+    kw_words = set(keyword.split())
     seed_norm = normalize_keyword(seed, lang)
     seed_parts = set(seed_norm.replace("-", " ").split())
 
     if not cjk:
-        return bool(seed_parts.intersection(kw_set))
+        overlap = seed_parts.intersection(kw_words)
+    else:
+        seed_lower = {w.lower() for w in seed_parts}
+        kw_lower = {w.lower() for w in kw_words}
+        overlap = seed_lower.intersection(kw_lower)
 
-    seed_lower = {w.lower() for w in seed_parts}
-    kw_lower = {w.lower() for w in kw_set}
-    return bool(seed_lower.intersection(kw_lower))
+    # Condition 1 : >= 2 mots partagés avec le seed courant.
+    if len(overlap) >= 2:
+        if len(kw_words) == 3:
+            # Pour les keywords 3 mots, le mot non-partagé doit appartenir au vocabulaire
+            # des seeds — peu importe si l'overlap contient un anchor.
+            # Évite "vidéoprojecteur haute définition" et "sport gratuit lyon"
+            # tout en gardant "hbo max prix" ("prix" ∈ seed_words).
+            non_overlap = kw_words - overlap
+            if non_overlap and not all(w in theme_profile.seed_words for w in non_overlap):
+                return False
+        return True
+
+    # Condition 2 : 1 seul mot partagé.
+    # - Pour les keywords courts (≤ 2 mots) : un anchor suffit, MAIS pour les 2-word keywords
+    #   le deuxième mot (non-anchor) doit apparaître dans le vocabulaire des seeds (≥ 3 chars)
+    #   ou être une abréviation courte (≤ 2 chars : vf, hd, fr…).
+    #   Évite "sodastream prix", "sporteasy gratuit", "streaming servicenow" (marques hors niche).
+    # - Pour les keywords longs (3 mots) : 1 seul mot partagé est trop peu → return False.
+    if len(overlap) == 1 and len(kw_words) <= 2:
+        shared = next(iter(overlap))
+        if shared in theme_profile.theme_anchors:
+            if len(kw_words) == 2:
+                other = next(w for w in kw_words if w != shared)
+                if len(other) >= 3 and other not in theme_profile.seed_words:
+                    return False
+            return True
+
+    return False
 
 
 def is_valid_keyword(
@@ -458,6 +566,7 @@ def expand_seed(
     modifiers: list[str],
     lang: str,
     delay: float,
+    theme_anchors: set[str] | None = None,
 ) -> tuple[dict[str, float], set[str]]:
     """
     Expand one seed via modifier queries + alphabetical expansion (seed + a-z).
@@ -465,13 +574,23 @@ def expand_seed(
     Uses ThreadPoolExecutor for concurrent fetching.
     Returns (scored_keywords dict, direct_keywords set).
     """
-    seed_words = set(normalize_keyword(seed, lang).split())
+    seed_norm_words = normalize_keyword(seed, lang).split()
+    seed_words = set(seed_norm_words)
     modifier_queries = [
         f"{seed} {mod}"
         for mod in modifiers
         if mod not in seed_words
     ]
-    alpha_queries = [f"{seed} {ch}" for ch in ALPHA_CHARS]
+    # Alpha expansion uniquement pour les seeds courts (≤ 2 mots).
+    # Sur les seeds 3+ mots, l'alpha génère trop de bruit hors-thème.
+    # Pour les seeds 2 mots sans anchor (sous-seeds génériques comme "catalogue france",
+    # "cloud service"), l'alpha génère du bruit hors-thème → désactivé.
+    if len(seed_norm_words) <= 2:
+        has_anchor = theme_anchors is not None and bool(seed_words & theme_anchors)
+        # Seeds sans anchor = sous-seeds sans ancrage thématique fort → pas d'alpha
+        alpha_queries = [f"{seed} {ch}" for ch in ALPHA_CHARS] if (has_anchor or theme_anchors is None) else []
+    else:
+        alpha_queries = []
     queries = [seed] + modifier_queries + alpha_queries
 
     all_scores: dict[str, float] = {}
@@ -575,7 +694,7 @@ def _scrape_one_seed(
     args: tuple,
 ) -> tuple[str, dict[str, float], set[str], set[str]]:
     seed, modifiers, lang, delay, theme_profile, max_per_seed, max_per_prefix = args
-    scored, direct = expand_seed(seed, modifiers, lang, delay)
+    scored, direct = expand_seed(seed, modifiers, lang, delay, theme_anchors=theme_profile.theme_anchors)
     cleaned = filter_keywords(
         scored,
         seed=seed,
@@ -599,7 +718,7 @@ def scrape_keywords(
     profile = get_lang_profile(lang)
     theme_profile = build_theme_profile(input_keywords, lang)
     modifiers = build_dynamic_modifiers(input_keywords, profile, lang)
-    input_keywords = expand_seed_list(input_keywords, lang)
+    input_keywords = expand_seed_list(input_keywords, lang, dominant_words=theme_profile.dominant_words)
     all_keywords: set[str] = set()
     all_direct: set[str] = set()
     all_scores: dict[str, float] = {}
@@ -617,6 +736,8 @@ def scrape_keywords(
         f"Limites : {max_per_seed}/seed, {max_per_prefix}/préfixe, {max_per_root}/racine\n"
         f"Thème : {len(theme_profile.seed_words)} mots, "
         f"{len(theme_profile.seed_bigrams)} bigrammes\n"
+        f"Dominant (≥2 seeds, {len(theme_profile.dominant_words)}) : {', '.join(sorted(theme_profile.dominant_words))}\n"
+        f"Anchors (≥{max(2, len(input_keywords)//20)} seeds, {len(theme_profile.theme_anchors)}) : {', '.join(sorted(theme_profile.theme_anchors))}\n"
         f"Modifiers ({len(modifiers)}) : {', '.join(modifiers)}\n"
     )
 

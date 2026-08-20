@@ -72,6 +72,17 @@ SQLI_GOOGLE_TEMPLATES = [
     # Sybase
     'intext:"Warning: sybase_query()" {q}',
     'intext:"Sybase message:" intext:"Incorrect syntax" {q}',
+    # WordPress (CMS le plus répandu — erreurs DB exposées fréquemment)
+    'intext:"WordPress database error" {q}',
+    'intext:"WordPress database error for query" {q}',
+    # Joomla
+    'intext:"DB function failed with error number" {q}',
+    # MS Access / ODBC legacy
+    'intext:"[Microsoft][ODBC Microsoft Access Driver]" {q}',
+    'intext:"Microsoft JET Database Engine error" {q}',
+    # PHP generics
+    'intext:"mysql_connect(): Access denied for user" {q}',
+    'intext:"mysqli_connect(): (HY000/1045)" {q}',
     # ext: / filetype: — encore fiables sur Google
     'ext:php intext:"sql syntax" {q}',
     'ext:php intext:"mysql_fetch_array" {q}',
