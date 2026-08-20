@@ -222,37 +222,22 @@ def is_on_theme(
     lang: str = DEFAULT_LANG,
 ) -> bool:
     """
-    Un keyword est dans le thème si :
-    1. Au moins 1 mot du seed est présent dans le keyword (cohérence seed)
-    2. Au moins 1 mot du keyword — HORS mots du seed — est dans seed_words
-       OU un bigramme du keyword dans seed_bigrams (ancrage thème dynamique)
+    Un keyword est dans le thème si au moins 1 mot du seed apparaît dans le keyword.
+    Google autocomplete ne retourne que des complétions pertinentes pour la query —
+    les résultats sont déjà on-theme par construction; on vérifie juste la cohérence seed.
     """
     cjk = is_cjk_lang(lang)
-    kw_words = keyword.split()
-    kw_set = set(kw_words)
+    kw_set = set(keyword.split())
 
     seed_norm = normalize_keyword(seed, lang)
     seed_parts = set(seed_norm.replace("-", " ").split())
 
-    # Condition 1 : cohérence seed
-    if not seed_parts.intersection(kw_set):
-        if not cjk:
-            return False
-        seed_lower = {w.lower() for w in seed_parts}
-        kw_lower = {w.lower() for w in kw_set}
-        if not seed_lower.intersection(kw_lower):
-            return False
+    if not cjk:
+        return bool(seed_parts.intersection(kw_set))
 
-    # Condition 2 : ancrage thème — exclure les mots du seed lui-même
-    # pour éviter les faux positifs sur seeds mono-mot (canon, gore, yuri…)
-    non_seed_theme = kw_set.intersection(theme_profile.seed_words) - seed_parts
-    if non_seed_theme:
-        return True
-
-    kw_bigrams = {
-        f"{kw_words[i]} {kw_words[i + 1]}" for i in range(len(kw_words) - 1)
-    }
-    return bool(kw_bigrams.intersection(theme_profile.seed_bigrams))
+    seed_lower = {w.lower() for w in seed_parts}
+    kw_lower = {w.lower() for w in kw_set}
+    return bool(seed_lower.intersection(kw_lower))
 
 
 def is_valid_keyword(
