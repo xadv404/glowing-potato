@@ -65,33 +65,6 @@ SQLI_GOOGLE_TEMPLATES = [
     'intext:"SQLite3::query(): Unable to prepare statement" {q}',
     'intext:"SQLiteException: no such table" {q}',
     'intext:"Warning: SQLite3::exec()" {q}',
-    # IBM DB2
-    'intext:"detected an internal error [IBM][CLI Driver][DB2" {q}',
-    'intext:"An illegal character has been found in the statement" {q}',
-    'intext:"DB2 SQL error: SQLCODE:" {q}',
-    # Sybase
-    'intext:"Warning: sybase_query()" {q}',
-    'intext:"Sybase message:" intext:"Incorrect syntax" {q}',
-    # WordPress (CMS le plus répandu — erreurs DB exposées fréquemment)
-    'intext:"WordPress database error" {q}',
-    'intext:"WordPress database error for query" {q}',
-    # Joomla
-    'intext:"DB function failed with error number" {q}',
-    # MS Access / ODBC legacy
-    'intext:"[Microsoft][ODBC Microsoft Access Driver]" {q}',
-    'intext:"Microsoft JET Database Engine error" {q}',
-    # PHP generics
-    'intext:"mysql_connect(): Access denied for user" {q}',
-    'intext:"mysqli_connect(): (HY000/1045)" {q}',
-    # ext: / filetype: — encore fiables sur Google
-    'ext:php intext:"sql syntax" {q}',
-    'ext:php intext:"mysql_fetch_array" {q}',
-    'ext:php intext:"mysql_query" {q}',
-    'ext:asp intext:"Syntax error" {q}',
-    'ext:aspx intext:"SqlException" {q}',
-    'filetype:php intext:"expects parameter 1 to be resource, boolean given" {q}',
-    'filetype:php intext:"mysql_fetch_array" intext:"Warning:" {q}',
-    'filetype:asp intext:"[ODBC SQL" {q}',
 ]
 
 SQLI_TEMPLATES = SQLI_GOOGLE_TEMPLATES  # compat
